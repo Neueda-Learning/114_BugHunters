@@ -2,6 +2,8 @@ package com.example.paymentprocessing.model;
 
 import java.time.LocalDateTime;
 
+import com.example.paymentprocessing.enums.PaymentStatus;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -23,19 +25,19 @@ public class PaymentHistory {
         this.paymentId = paymentId;
     }
 
-    public String getOldStatus() {
+    public PaymentStatus getOldStatus() {
         return oldStatus;
     }
 
-    public void setOldStatus(String oldStatus) {
+    public void setOldStatus(PaymentStatus oldStatus) {
         this.oldStatus = oldStatus;
     }
 
-    public String getNewStatus() {
+    public PaymentStatus getNewStatus() {
         return newStatus;
     }
 
-    public void setNewStatus(String newStatus) {
+    public void setNewStatus(PaymentStatus newStatus) {
         this.newStatus = newStatus;
     }
 
@@ -71,10 +73,12 @@ public class PaymentHistory {
     private Long paymentId;
 
     @Column(name = "old_status")
-    private String oldStatus;
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus oldStatus;
 
     @Column(name = "new_status", nullable = false)
-    private String newStatus;
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus newStatus;
 
     @Column(name = "changed_at", nullable = false, updatable = false)
     private LocalDateTime changedAt;

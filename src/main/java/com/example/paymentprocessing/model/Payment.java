@@ -1,6 +1,8 @@
 package com.example.paymentprocessing.model;
 import java.time.LocalDateTime;
 
+import com.example.paymentprocessing.enums.PaymentStatus;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -46,11 +48,11 @@ public class Payment {
         this.accountTo = accountTo;
     }
 
-    public String getStatus() {
+    public PaymentStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(PaymentStatus status) {
         this.status = status;
     }
 
@@ -102,8 +104,9 @@ public class Payment {
     @Column(name = "account_to", nullable = false)
     private String accountTo;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private String status;
+    private PaymentStatus status;
 
     @Column(name = "idempotency_key", unique = true)
     private String key;   // idempotency key
