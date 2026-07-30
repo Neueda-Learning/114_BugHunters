@@ -2,6 +2,10 @@ package com.example.paymentprocessing.model;
 
 import java.time.LocalDateTime;
 
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "payment_history")
 public class PaymentHistory {
     public Long getId() {
         return id;
@@ -59,17 +63,25 @@ public class PaymentHistory {
         this.type = type;
     }
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "payment_id", nullable = false)
     private Long paymentId;
 
+    @Column(name = "old_status")
     private String oldStatus;
 
+    @Column(name = "new_status", nullable = false)
     private String newStatus;
 
+    @Column(name = "changed_at", nullable = false, updatable = false)
     private LocalDateTime changedAt;
 
+    @Column(name = "remarks")
     private String remarks;
 
+    @Column(name = "type")
     private String type;
 }

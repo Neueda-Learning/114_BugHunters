@@ -1,5 +1,10 @@
 package com.example.paymentprocessing.model;
 import java.time.LocalDateTime;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "payment")
 public class Payment {
     public Long getId() {
         return id;
@@ -81,23 +86,34 @@ public class Payment {
         this.type = type;
     }
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "currency", nullable = false)
     private String currency;
 
+    @Column(name = "amount", nullable = false)
     private double amount;
 
+    @Column(name = "account_from", nullable = false)
     private String accountFrom;
 
+    @Column(name = "account_to", nullable = false)
     private String accountTo;
 
+    @Column(name = "status", nullable = false)
     private String status;
 
+    @Column(name = "idempotency_key", unique = true)
     private String key;   // idempotency key
 
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "type", nullable = false)
     private String type;
 }
