@@ -1,6 +1,7 @@
 package com.example.paymentprocessing.repository;
 
 import java.util.List;
+import java.util.Optional;
 import com.example.paymentprocessing.enums.PaymentStatus;
 import com.example.paymentprocessing.model.Payment;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,4 +10,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     List<Payment> findByStatus(PaymentStatus status);
+
+    Optional<Payment> findByKey(String key);
 }
