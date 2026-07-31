@@ -1,5 +1,12 @@
 package com.example.paymentprocessing.model;
 import java.time.LocalDateTime;
+
+import com.example.paymentprocessing.enums.PaymentStatus;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "payment")
 public class Payment {
     public Long getId() {
         return id;
@@ -41,11 +48,11 @@ public class Payment {
         this.accountTo = accountTo;
     }
 
-    public String getStatus() {
+    public PaymentStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(PaymentStatus status) {
         this.status = status;
     }
 
@@ -81,23 +88,35 @@ public class Payment {
         this.type = type;
     }
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "currency", nullable = false)
     private String currency;
 
+    @Column(name = "amount", nullable = false)
     private double amount;
 
+    @Column(name = "account_from", nullable = false)
     private String accountFrom;
 
+    @Column(name = "account_to", nullable = false)
     private String accountTo;
 
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private PaymentStatus status;
 
+    @Column(name = "idempotency_key", unique = true)
     private String key;   // idempotency key
 
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "type", nullable = false)
     private String type;
 }
