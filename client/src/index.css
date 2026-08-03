@@ -1,0 +1,52 @@
+:root {
+  --bg: #f5f8ff;
+  --surface: rgba(255, 255, 255, 0.88);
+  --ink: #0b1b33;
+  --ink-soft: #496086;
+  --line: #c9d8ec;
+  --accent-1: #1e6ff2;
+  --accent-2: #0ea5e9;
+  --focus: #0b84ff;
+  --font-body: 'Avenir Next', 'Nunito Sans', 'Segoe UI', sans-serif;
+  --font-head: 'Space Grotesk', 'Avenir Next', 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(30, 111, 242, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 16%, rgba(14, 165, 233, 0.16), transparent 28%),
+    linear-gradient(180deg, #f8fbff, #edf3fd 48%, #f7fbff);
+  background-attachment: fixed;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--font-head);
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: clamp(1.8rem, 2vw + 1rem, 2.7rem);
+}
+
+h2 {
+  font-size: clamp(1.15rem, 1vw + 0.9rem, 1.5rem);
+}
+
+p {
+  margin: 0;
+}
