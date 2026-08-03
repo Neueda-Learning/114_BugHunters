@@ -27,8 +27,6 @@ function App() {
     amount: '',
     accountFrom: '',
     accountTo: '',
-    status: 'CREATED',
-    key: '',
     type: 'TRANSFER',
   })
 
@@ -99,8 +97,6 @@ function App() {
         amount: amountValue,
         accountFrom: formData.accountFrom.trim(),
         accountTo: formData.accountTo.trim(),
-        status: formData.status,
-        key: formData.key.trim() || null,
         type: formData.type.trim().toUpperCase(),
       }
 
@@ -111,8 +107,6 @@ function App() {
         amount: '',
         accountFrom: '',
         accountTo: '',
-        status: formData.status,
-        key: '',
         type: formData.type,
       })
       await loadPayments(listStatusFilter)
@@ -222,16 +216,6 @@ function App() {
               />
             </label>
             <label>
-              Initial Status
-              <select name="status" value={formData.status} onChange={handleInputChange}>
-                {PAYMENT_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
               Type
               <input
                 name="type"
@@ -241,16 +225,6 @@ function App() {
                 required
               />
             </label>
-            <label className="span-2">
-              Idempotency Key (Optional)
-              <input
-                name="key"
-                value={formData.key}
-                onChange={handleInputChange}
-                placeholder="pay-2026-0001"
-              />
-            </label>
-
             <div className="form-actions span-2">
               <button type="submit" disabled={submitLoading}>
                 {submitLoading ? 'Creating...' : 'Create Payment'}

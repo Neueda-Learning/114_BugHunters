@@ -2,6 +2,7 @@ package com.example.paymentprocessing.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -25,9 +26,10 @@ public class PaymentService {
         payment.setCreatedAt(LocalDateTime.now());
         payment.setUpdatedAt(LocalDateTime.now());
 
-        if (payment.getStatus() == null) {
-            payment.setStatus(PaymentStatus.CREATED);
-        }
+        payment.setStatus(PaymentStatus.CREATED);
+
+        // Idempotency key is generated server-side; clients cannot supply their own.
+        payment.setKey(UUID.randomUUID().toString());
 
         return paymentRepository.save(payment);
     }
