@@ -11,18 +11,24 @@ import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
 import com.example.paymentprocessing.repository.PaymentHistoryRepository;
 import com.example.paymentprocessing.repository.PaymentRepository;
+import com.example.paymentprocessing.validation.PaymentValidator;
 
 @Service
 public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentHistoryRepository paymentHistoryRepository;
+    private final PaymentValidator paymentValidator;
 
-    public PaymentService(PaymentRepository paymentRepository, PaymentHistoryRepository paymentHistoryRepository) {
+    public PaymentService(PaymentRepository paymentRepository, PaymentHistoryRepository paymentHistoryRepository,
+            PaymentValidator paymentValidator) {
         this.paymentRepository = paymentRepository;
         this.paymentHistoryRepository = paymentHistoryRepository;
+        this.paymentValidator = paymentValidator;
     }
 
     public Payment createPayment(Payment payment) {
+        paymentValidator.validateNewPayment(payment);
+
         payment.setCreatedAt(LocalDateTime.now());
         payment.setUpdatedAt(LocalDateTime.now());
 
@@ -55,6 +61,8 @@ public class PaymentService {
     public Payment updatePaymentStatus(Long id, PaymentStatus newStatus) {
         Payment payment = getPaymentById(id);
         PaymentStatus oldStatus = payment.getStatus();
+
+        paymentValidator.validateStatusTransition(oldStatus, newStatus);
 
         payment.setStatus(newStatus);
         payment.setUpdatedAt(LocalDateTime.now());

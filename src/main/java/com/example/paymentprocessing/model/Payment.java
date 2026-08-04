@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import com.example.paymentprocessing.enums.PaymentStatus;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 
 @Entity
 @Table(name = "payment")
@@ -92,15 +93,18 @@ public class Payment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank(message = "Currency is required")
     @Column(name = "currency", nullable = false)
     private String currency;
 
     @Column(name = "amount", nullable = false)
     private double amount;
 
+    @NotBlank(message = "Source account is required")
     @Column(name = "account_from", nullable = false)
     private String accountFrom;
 
+    @NotBlank(message = "Destination account is required")
     @Column(name = "account_to", nullable = false)
     private String accountTo;
 
@@ -108,7 +112,8 @@ public class Payment {
     @Column(name = "status", nullable = false)
     private PaymentStatus status;
 
-    @Column(name = "idempotency_key", unique = true)
+    @NotBlank(message = "Idempotency key is required")
+    @Column(name = "idempotency_key", nullable = false, unique = true)
     private String key;   // idempotency key
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -117,6 +122,7 @@ public class Payment {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @NotBlank(message = "Type is required")
     @Column(name = "type", nullable = false)
     private String type;
 }
