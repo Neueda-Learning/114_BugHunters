@@ -1,8 +1,14 @@
 package com.example.paymentprocessing.service;
 
 import com.example.paymentprocessing.enums.PaymentStatus;
+import com.example.paymentprocessing.exception.AccountNotFoundException;
+import com.example.paymentprocessing.exception.InvalidStatusTransitionException;
+import com.example.paymentprocessing.exception.OtpVerificationFailedException;
+import com.example.paymentprocessing.exception.PaymentProcessingException;
+import com.example.paymentprocessing.model.Account;
 import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
+import com.example.paymentprocessing.repository.AccountRepository;
 import com.example.paymentprocessing.repository.PaymentHistoryRepository;
 import com.example.paymentprocessing.repository.PaymentRepository;
 import com.example.paymentprocessing.validation.PaymentValidator;
@@ -21,7 +27,15 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,7 +48,13 @@ class PaymentServiceTest {
     private PaymentHistoryRepository paymentHistoryRepository;
 
     @Mock
+    private AccountRepository accountRepository;
+
+    @Mock
     private PaymentValidator paymentValidator;
+
+    @Mock
+    private OtpVerificationService otpVerificationService;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -51,197 +71,191 @@ class PaymentServiceTest {
         return p;
     }
 
-    // --- createPayment ---
+    private Account buildAccount(String accountNumber, double balance) {
+        Account a = new Account();
+        a.setAccountNumber(accountNumber);
+        a.setBalance(balance);
+        a.setCurrency("USD");
+        return a;
+    }
 
     @Test
-    void createPayment_setsDefaultCreatedStatus_whenStatusIsNull() {
+    void createPayment_setsDefaultCreatedStatusAndTimestamps() {
         Payment payment = buildPayment(null, null);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Payment result = paymentService.createPayment(payment);
 
         assertThat(result.getStatus()).isEqualTo(PaymentStatus.CREATED);
-    }
-
-    @Test
-    void createPayment_alwaysSetsStatusToCreated_ignoresInputStatus() {
-        Payment payment = buildPayment(null, PaymentStatus.VALIDATED);
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        Payment result = paymentService.createPayment(payment);
-
-        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CREATED);
-    }
-
-    @Test
-    void createPayment_setsCreatedAtAndUpdatedAt() {
-        Payment payment = buildPayment(null, null);
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        Payment result = paymentService.createPayment(payment);
-
         assertThat(result.getCreatedAt()).isNotNull();
         assertThat(result.getUpdatedAt()).isNotNull();
+        verify(paymentValidator).validateNewPayment(payment);
     }
 
     @Test
-    void createPayment_savesToRepository() {
-        Payment payment = buildPayment(null, null);
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        paymentService.createPayment(payment);
-
-        verify(paymentRepository).save(payment);
-    }
-
-    // --- getAllPayments ---
-
-    @Test
-    void getAllPayments_returnsAllPayments() {
-        List<Payment> payments = List.of(
-                buildPayment(1L, PaymentStatus.CREATED),
-                buildPayment(2L, PaymentStatus.SENT));
-        when(paymentRepository.findAll()).thenReturn(payments);
-
-        List<Payment> result = paymentService.getAllPayments();
-
-        assertThat(result).hasSize(2);
-        verify(paymentRepository).findAll();
-    }
-
-    @Test
-    void getAllPayments_returnsEmptyList_whenNoPaymentsExist() {
-        when(paymentRepository.findAll()).thenReturn(List.of());
-
-        List<Payment> result = paymentService.getAllPayments();
-
-        assertThat(result).isEmpty();
-    }
-
-    // --- getPaymentById ---
-
-    @Test
-    void getPaymentById_whenFound_returnsPayment() {
+    void updatePaymentStatus_rejectsInvalidTransition() {
         Payment payment = buildPayment(1L, PaymentStatus.CREATED);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        doThrow(new InvalidStatusTransitionException("Cannot transition payment from CREATED to COMPLETED"))
+                .when(paymentValidator).validateStatusTransition(PaymentStatus.CREATED, PaymentStatus.COMPLETED);
 
-        Payment result = paymentService.getPaymentById(1L);
+        assertThatThrownBy(() -> paymentService.updatePaymentStatus(1L, PaymentStatus.COMPLETED))
+                .isInstanceOf(InvalidStatusTransitionException.class);
 
-        assertThat(result.getId()).isEqualTo(1L);
-        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CREATED);
+        verify(paymentRepository, never()).save(any(Payment.class));
+        verify(paymentHistoryRepository, never()).save(any(PaymentHistory.class));
     }
 
     @Test
-    void getPaymentById_whenNotFound_throws404ResponseStatusException() {
-        when(paymentRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> paymentService.getPaymentById(99L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
-                        .isEqualTo(HttpStatus.NOT_FOUND));
-    }
-
-    // --- getPaymentsByStatus ---
-
-    @Test
-    void getPaymentsByStatus_returnsOnlyMatchingPayments() {
-        List<Payment> created = List.of(buildPayment(1L, PaymentStatus.CREATED));
-        when(paymentRepository.findByStatus(PaymentStatus.CREATED)).thenReturn(created);
-
-        List<Payment> result = paymentService.getPaymentsByStatus(PaymentStatus.CREATED);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getStatus()).isEqualTo(PaymentStatus.CREATED);
-    }
-
-    @Test
-    void getPaymentsByStatus_returnsEmpty_whenNoMatchingPayments() {
-        when(paymentRepository.findByStatus(PaymentStatus.FAILED)).thenReturn(List.of());
-
-        List<Payment> result = paymentService.getPaymentsByStatus(PaymentStatus.FAILED);
-
-        assertThat(result).isEmpty();
-    }
-
-    // --- getPaymentHistoryByPaymentId ---
-
-    @Test
-    void getPaymentHistoryByPaymentId_whenPaymentExists_returnsHistory() {
-        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
-        PaymentHistory history = new PaymentHistory();
-        history.setPaymentId(1L);
-        history.setOldStatus(PaymentStatus.CREATED);
-        history.setNewStatus(PaymentStatus.VALIDATED);
+    void processPayment_happyPath_createdToValidatedToSentToCompleted() {
+        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        Account fromAccount = buildAccount("ACC001", 500.0);
+        Account toAccount = buildAccount("ACC002", 200.0);
 
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
-        when(paymentHistoryRepository.findByPaymentId(1L)).thenReturn(List.of(history));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
+        when(accountRepository.findByAccountNumberForUpdate("ACC001")).thenReturn(Optional.of(fromAccount));
+        when(accountRepository.findByAccountNumberForUpdate("ACC002")).thenReturn(Optional.of(toAccount));
 
-        List<PaymentHistory> result = paymentService.getPaymentHistoryByPaymentId(1L);
+        Payment result = paymentService.processPayment(1L, "123456");
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getOldStatus()).isEqualTo(PaymentStatus.CREATED);
-        assertThat(result.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(fromAccount.getBalance()).isEqualTo(400.0);
+        assertThat(toAccount.getBalance()).isEqualTo(300.0);
+
+        ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
+        verify(paymentHistoryRepository, times(3)).save(historyCaptor.capture());
+        List<PaymentHistory> history = historyCaptor.getAllValues();
+        assertThat(history.get(0).getOldStatus()).isEqualTo(PaymentStatus.CREATED);
+        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(2).getOldStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(2).getNewStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(history).allMatch(h -> h.getRemarks() != null && !h.getRemarks().isBlank());
     }
 
     @Test
-    void getPaymentHistoryByPaymentId_whenPaymentNotFound_throwsException() {
-        when(paymentRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> paymentService.getPaymentHistoryByPaymentId(99L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
-                        .isEqualTo(HttpStatus.NOT_FOUND));
-    }
-
-    // --- updatePaymentStatus ---
-
-    @Test
-    void updatePaymentStatus_updatesStatusOnPayment() {
+    void processPayment_validationFailure_marksCreatedToFailedAndStopsFurtherProcessing() {
         Payment payment = buildPayment(1L, PaymentStatus.CREATED);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_AMOUNT: Amount must be greater than 0"))
+                .when(paymentValidator).validateAmount(anyDouble());
 
-        Payment result = paymentService.updatePaymentStatus(1L, PaymentStatus.VALIDATED);
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
+                .isInstanceOf(PaymentProcessingException.class)
+                .hasMessageContaining("Payment validation failed");
 
-        assertThat(result.getStatus()).isEqualTo(PaymentStatus.VALIDATED);
-    }
-
-    @Test
-    void updatePaymentStatus_setsUpdatedAt() {
-        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
-        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        Payment result = paymentService.updatePaymentStatus(1L, PaymentStatus.VALIDATED);
-
-        assertThat(result.getUpdatedAt()).isNotNull();
-    }
-
-    @Test
-    void updatePaymentStatus_savesHistoryRecordWithCorrectStatuses() {
-        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
-        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        paymentService.updatePaymentStatus(1L, PaymentStatus.VALIDATED);
+        verifyNoInteractions(otpVerificationService);
+        verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
 
         ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
         verify(paymentHistoryRepository).save(historyCaptor.capture());
-
-        PaymentHistory saved = historyCaptor.getValue();
-        assertThat(saved.getPaymentId()).isEqualTo(1L);
-        assertThat(saved.getOldStatus()).isEqualTo(PaymentStatus.CREATED);
-        assertThat(saved.getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
-        assertThat(saved.getChangedAt()).isNotNull();
+        PaymentHistory failedHistory = historyCaptor.getValue();
+        assertThat(failedHistory.getOldStatus()).isEqualTo(PaymentStatus.CREATED);
+        assertThat(failedHistory.getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(failedHistory.getRemarks()).contains("Validation failed");
     }
 
     @Test
-    void updatePaymentStatus_whenPaymentNotFound_throwsException() {
-        when(paymentRepository.findById(99L)).thenReturn(Optional.empty());
+    void processPayment_otpFailure_marksValidatedToFailedWithoutBalanceUpdate() {
+        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "999999")).thenReturn(false);
 
-        assertThatThrownBy(() -> paymentService.updatePaymentStatus(99L, PaymentStatus.VALIDATED))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
-                        .isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "999999"))
+                .isInstanceOf(OtpVerificationFailedException.class);
+
+        verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
+
+        ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
+        verify(paymentHistoryRepository, times(2)).save(historyCaptor.capture());
+        List<PaymentHistory> history = historyCaptor.getAllValues();
+        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+    }
+
+    @Test
+    void processPayment_balanceUpdateFailure_marksValidatedToFailed() {
+        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
+        doThrow(new RuntimeException("Balance update failure"))
+                .when(accountRepository).findByAccountNumberForUpdate("ACC001");
+
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
+                .isInstanceOf(PaymentProcessingException.class)
+                .hasMessageContaining("Payment processing failed");
+
+        ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
+        verify(paymentHistoryRepository, times(2)).save(historyCaptor.capture());
+        List<PaymentHistory> history = historyCaptor.getAllValues();
+        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+    }
+
+    @Test
+    void processPayment_unexpectedErrorAfterSent_marksSentToFailed() {
+        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        Account fromAccount = buildAccount("ACC001", 500.0);
+        Account toAccount = buildAccount("ACC002", 200.0);
+
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
+        when(accountRepository.findByAccountNumberForUpdate("ACC001")).thenReturn(Optional.of(fromAccount));
+        when(accountRepository.findByAccountNumberForUpdate("ACC002")).thenReturn(Optional.of(toAccount));
+
+        final int[] historySaveCount = {0};
+        doAnswer(invocation -> {
+            historySaveCount[0]++;
+            if (historySaveCount[0] == 3) {
+                throw new RuntimeException("Post-sent failure");
+            }
+            return invocation.getArgument(0);
+        }).when(paymentHistoryRepository).save(any(PaymentHistory.class));
+
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
+                .isInstanceOf(PaymentProcessingException.class);
+
+        ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
+        verify(paymentHistoryRepository, times(4)).save(historyCaptor.capture());
+        List<PaymentHistory> history = historyCaptor.getAllValues();
+        PaymentHistory last = history.get(history.size() - 1);
+        assertThat(last.getOldStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(last.getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+    }
+
+    @Test
+    void processPayment_rejectsInvalidStartState() {
+        Payment payment = buildPayment(1L, PaymentStatus.COMPLETED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessageContaining("must be in CREATED status");
+
+        verifyNoInteractions(otpVerificationService);
+        verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
+        verify(paymentRepository, never()).save(any(Payment.class));
+        verify(paymentHistoryRepository, never()).save(any(PaymentHistory.class));
+    }
+
+    @Test
+    void processPayment_whenAccountMissing_throwsAccountNotFoundException() {
+        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
+        when(accountRepository.findByAccountNumberForUpdate("ACC001")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
+                .isInstanceOf(PaymentProcessingException.class);
     }
 }

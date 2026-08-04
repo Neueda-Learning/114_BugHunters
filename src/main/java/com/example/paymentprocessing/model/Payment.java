@@ -113,7 +113,7 @@ public class Payment {
     private PaymentStatus status;
 
     @Column(name = "idempotency_key", nullable = false, unique = true)
-    private String key;   // idempotency key
+    private String key;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
