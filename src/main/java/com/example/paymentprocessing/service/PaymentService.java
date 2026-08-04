@@ -5,10 +5,16 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import com.example.paymentprocessing.enums.PaymentStatus;
+import com.example.paymentprocessing.exception.AccountNotFoundException;
+import com.example.paymentprocessing.exception.InvalidStatusTransitionException;
+import com.example.paymentprocessing.exception.OtpVerificationFailedException;
+import com.example.paymentprocessing.model.Account;
 import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
+import com.example.paymentprocessing.repository.AccountRepository;
 import com.example.paymentprocessing.repository.PaymentHistoryRepository;
 import com.example.paymentprocessing.repository.PaymentRepository;
 import com.example.paymentprocessing.validation.PaymentValidator;
@@ -17,13 +23,18 @@ import com.example.paymentprocessing.validation.PaymentValidator;
 public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentHistoryRepository paymentHistoryRepository;
+    private final AccountRepository accountRepository;
     private final PaymentValidator paymentValidator;
+    private final OtpVerificationService otpVerificationService;
 
     public PaymentService(PaymentRepository paymentRepository, PaymentHistoryRepository paymentHistoryRepository,
-            PaymentValidator paymentValidator) {
+            AccountRepository accountRepository, PaymentValidator paymentValidator,
+            OtpVerificationService otpVerificationService) {
         this.paymentRepository = paymentRepository;
         this.paymentHistoryRepository = paymentHistoryRepository;
+        this.accountRepository = accountRepository;
         this.paymentValidator = paymentValidator;
+        this.otpVerificationService = otpVerificationService;
     }
 
     public Payment createPayment(Payment payment) {
@@ -75,5 +86,81 @@ public class PaymentService {
         paymentHistoryRepository.save(history);
 
         return updated;
+    }
+
+    /**
+     * Processes a VALIDATED payment: verifies the supplied OTP code and, only if it
+     * succeeds, debits the source account and credits the destination account.
+     *
+     * <p>Rules enforced (see business requirements for account-balance updates):
+     * <ul>
+     *   <li>The payment must already be in {@code VALIDATED} status - i.e. all prior
+     *       payment validations have already passed.</li>
+     *   <li>If OTP verification fails, the payment is marked {@code FAILED} and no
+     *       account balance is touched; the caller must restart the payment process
+     *       by submitting a new payment.</li>
+     *   <li>If OTP verification succeeds, funds are moved atomically and the payment
+     *       transitions {@code VALIDATED -> SENT -> COMPLETED}, reusing the existing
+     *       {@link #updatePaymentStatus(Long, PaymentStatus)} logic (and its history
+     *       trail) at each step.</li>
+     *   <li>Any failure after OTP success (insufficient funds, missing account, etc.)
+     *       rolls back the entire transaction, including the SENT/COMPLETED
+     *       transitions and both account balance changes.</li>
+     * </ul>
+     */
+    @Transactional(noRollbackFor = OtpVerificationFailedException.class)
+    public Payment processPayment(Long paymentId, String otpCode) {
+        Payment payment = getPaymentById(paymentId);
+
+        if (payment.getStatus() != PaymentStatus.VALIDATED) {
+            throw new InvalidStatusTransitionException(
+                    "Payment " + paymentId + " must be in VALIDATED status to be processed, but is "
+                            + payment.getStatus());
+        }
+
+        if (!otpVerificationService.isOtpValid(paymentId, otpCode)) {
+            updatePaymentStatus(paymentId, PaymentStatus.FAILED);
+            throw new OtpVerificationFailedException(
+                    "OTP verification failed for payment " + paymentId
+                            + ". No account balance was updated; please restart the payment process.");
+        }
+
+        updatePaymentStatus(paymentId, PaymentStatus.SENT);
+
+        transferFunds(payment);
+
+        return updatePaymentStatus(paymentId, PaymentStatus.COMPLETED);
+    }
+
+    /**
+     * Debits the source account and credits the destination account for the given
+     * payment. Both accounts are locked (in a deterministic order to avoid deadlocks
+     * between concurrent, opposite-direction transfers) and the source balance is
+     * re-validated at the moment of transfer, since time may have passed since the
+     * payment was first validated.
+     */
+    private void transferFunds(Payment payment) {
+        String accountFrom = payment.getAccountFrom();
+        String accountTo = payment.getAccountTo();
+        boolean fromFirst = accountFrom.compareTo(accountTo) <= 0;
+
+        Account firstLocked = lockAccount(fromFirst ? accountFrom : accountTo);
+        Account secondLocked = lockAccount(fromFirst ? accountTo : accountFrom);
+
+        Account fromAccount = fromFirst ? firstLocked : secondLocked;
+        Account toAccount = fromFirst ? secondLocked : firstLocked;
+
+        paymentValidator.validateSufficientFunds(fromAccount, payment.getAmount());
+
+        fromAccount.setBalance(fromAccount.getBalance() - payment.getAmount());
+        toAccount.setBalance(toAccount.getBalance() + payment.getAmount());
+
+        accountRepository.save(fromAccount);
+        accountRepository.save(toAccount);
+    }
+
+    private Account lockAccount(String accountNumber) {
+        return accountRepository.findByAccountNumberForUpdate(accountNumber)
+                .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
     }
 }

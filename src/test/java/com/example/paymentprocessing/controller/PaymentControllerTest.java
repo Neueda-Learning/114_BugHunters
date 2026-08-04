@@ -1,6 +1,9 @@
 package com.example.paymentprocessing.controller;
 
 import com.example.paymentprocessing.enums.PaymentStatus;
+import com.example.paymentprocessing.exception.AccountNotFoundException;
+import com.example.paymentprocessing.exception.InvalidStatusTransitionException;
+import com.example.paymentprocessing.exception.OtpVerificationFailedException;
 import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
 import com.example.paymentprocessing.service.PaymentService;
@@ -183,6 +186,68 @@ class PaymentControllerTest {
                 .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found with id: 99"));
 
         mockMvc.perform(patch("/api/payments/99/status").param("status", "VALIDATED"))
+                .andExpect(status().isNotFound());
+    }
+
+    // --- POST /api/payments/{id}/process ---
+
+    @Test
+    void processPayment_whenOtpValid_returns200WithCompletedPayment() throws Exception {
+        Payment completed = buildPayment(1L, PaymentStatus.COMPLETED);
+        when(paymentService.processPayment(eq(1L), eq("123456"))).thenReturn(completed);
+
+        mockMvc.perform(post("/api/payments/1/process")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"otpCode\":\"123456\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
+    void processPayment_whenOtpInvalid_returns401() throws Exception {
+        when(paymentService.processPayment(eq(1L), eq("999999")))
+                .thenThrow(new OtpVerificationFailedException("OTP verification failed for payment 1"));
+
+        mockMvc.perform(post("/api/payments/1/process")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"otpCode\":\"999999\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("OTP_VERIFICATION_FAILED"));
+    }
+
+    @Test
+    void processPayment_whenPaymentNotValidated_returns400() throws Exception {
+        when(paymentService.processPayment(eq(1L), eq("123456")))
+                .thenThrow(new InvalidStatusTransitionException("Payment 1 must be in VALIDATED status"));
+
+        mockMvc.perform(post("/api/payments/1/process")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"otpCode\":\"123456\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_STATUS_TRANSITION"));
+    }
+
+    @Test
+    void processPayment_whenAccountMissing_returns404() throws Exception {
+        when(paymentService.processPayment(eq(1L), eq("123456")))
+                .thenThrow(new AccountNotFoundException("Account not found: ACC001"));
+
+        mockMvc.perform(post("/api/payments/1/process")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"otpCode\":\"123456\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("ACCOUNT_NOT_FOUND"));
+    }
+
+    @Test
+    void processPayment_whenPaymentNotFound_returns404() throws Exception {
+        when(paymentService.processPayment(eq(99L), eq("123456")))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found with id: 99"));
+
+        mockMvc.perform(post("/api/payments/99/process")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"otpCode\":\"123456\"}"))
                 .andExpect(status().isNotFound());
     }
 }
