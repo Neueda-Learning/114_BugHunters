@@ -15,6 +15,7 @@ import com.example.paymentprocessing.enums.PaymentStatus;
 import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
 import com.example.paymentprocessing.service.PaymentService;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/payments")
@@ -25,7 +26,7 @@ public class PaymentController {
     }
 
     @PostMapping
-    public ResponseEntity<Payment> createPayment(@RequestBody Payment payment) {
+    public ResponseEntity<Payment> createPayment(@Valid @RequestBody Payment payment) {
         Payment created = paymentService.createPayment(payment);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
