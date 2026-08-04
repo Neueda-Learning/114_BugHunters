@@ -5,6 +5,7 @@ import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
 import com.example.paymentprocessing.repository.PaymentHistoryRepository;
 import com.example.paymentprocessing.repository.PaymentRepository;
+import com.example.paymentprocessing.validation.PaymentValidator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -31,6 +32,9 @@ class PaymentServiceTest {
 
     @Mock
     private PaymentHistoryRepository paymentHistoryRepository;
+
+    @Mock
+    private PaymentValidator paymentValidator;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -60,13 +64,13 @@ class PaymentServiceTest {
     }
 
     @Test
-    void createPayment_keepsExistingStatus_whenStatusAlreadySet() {
+    void createPayment_alwaysSetsStatusToCreated_ignoresInputStatus() {
         Payment payment = buildPayment(null, PaymentStatus.VALIDATED);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Payment result = paymentService.createPayment(payment);
 
-        assertThat(result.getStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CREATED);
     }
 
     @Test
