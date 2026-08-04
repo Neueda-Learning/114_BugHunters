@@ -11,6 +11,7 @@ import com.example.paymentprocessing.enums.PaymentStatus;
 import com.example.paymentprocessing.exception.AccountNotFoundException;
 import com.example.paymentprocessing.exception.InvalidStatusTransitionException;
 import com.example.paymentprocessing.exception.OtpVerificationFailedException;
+import com.example.paymentprocessing.exception.PaymentProcessingException;
 import com.example.paymentprocessing.model.Account;
 import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
@@ -68,24 +69,10 @@ public class PaymentService {
         return paymentHistoryRepository.findByPaymentId(paymentId);
     }
 
+    @Transactional
     public Payment updatePaymentStatus(Long id, PaymentStatus newStatus) {
         Payment payment = getPaymentById(id);
-        PaymentStatus oldStatus = payment.getStatus();
-
-        paymentValidator.validateStatusTransition(oldStatus, newStatus);
-
-        payment.setStatus(newStatus);
-        payment.setUpdatedAt(LocalDateTime.now());
-        Payment updated = paymentRepository.save(payment);
-
-        PaymentHistory history = new PaymentHistory();
-        history.setPaymentId(id);
-        history.setOldStatus(oldStatus);
-        history.setNewStatus(newStatus);
-        history.setChangedAt(LocalDateTime.now());
-        paymentHistoryRepository.save(history);
-
-        return updated;
+        return transitionWithHistory(payment, newStatus, "Manual status update");
     }
 
     /**
@@ -108,28 +95,52 @@ public class PaymentService {
      *       transitions and both account balance changes.</li>
      * </ul>
      */
-    @Transactional(noRollbackFor = OtpVerificationFailedException.class)
+    @Transactional(noRollbackFor = { OtpVerificationFailedException.class, PaymentProcessingException.class })
     public Payment processPayment(Long paymentId, String otpCode) {
         Payment payment = getPaymentById(paymentId);
 
-        if (payment.getStatus() != PaymentStatus.VALIDATED) {
+        if (payment.getStatus() != PaymentStatus.CREATED) {
             throw new InvalidStatusTransitionException(
-                    "Payment " + paymentId + " must be in VALIDATED status to be processed, but is "
+                    "Payment " + paymentId + " must be in CREATED status to be processed, but is "
                             + payment.getStatus());
         }
 
+        try {
+            paymentValidator.validateAmount(payment.getAmount());
+            paymentValidator.validateCurrency(payment.getCurrency());
+            Account fromAccount = paymentValidator.validateAccounts(payment.getAccountFrom(), payment.getAccountTo());
+            paymentValidator.validateSufficientFunds(fromAccount, payment.getAmount());
+            transitionWithHistory(payment, PaymentStatus.VALIDATED, "All payment validations passed");
+        } catch (ResponseStatusException ex) {
+            transitionWithHistory(payment, PaymentStatus.FAILED, "Validation failed: " + ex.getReason());
+            throw new PaymentProcessingException("Payment validation failed: " + ex.getReason(), ex);
+        }
+
         if (!otpVerificationService.isOtpValid(paymentId, otpCode)) {
-            updatePaymentStatus(paymentId, PaymentStatus.FAILED);
+            transitionWithHistory(payment, PaymentStatus.FAILED,
+                    "OTP verification failed. User must restart payment from the beginning.");
             throw new OtpVerificationFailedException(
                     "OTP verification failed for payment " + paymentId
                             + ". No account balance was updated; please restart the payment process.");
         }
 
-        updatePaymentStatus(paymentId, PaymentStatus.SENT);
+        try {
+            transferFunds(payment);
+            transitionWithHistory(payment, PaymentStatus.SENT, "Account balance update completed successfully");
+        } catch (Exception ex) {
+            transitionWithHistory(payment, PaymentStatus.FAILED, "Balance update failed: " + ex.getMessage());
+            throw new PaymentProcessingException("Payment processing failed: " + ex.getMessage(), ex);
+        }
 
-        transferFunds(payment);
-
-        return updatePaymentStatus(paymentId, PaymentStatus.COMPLETED);
+        try {
+            return transitionWithHistory(payment, PaymentStatus.COMPLETED, "Transfer completed successfully");
+        } catch (Exception ex) {
+            if (payment.getStatus() != PaymentStatus.SENT) {
+                payment.setStatus(PaymentStatus.SENT);
+            }
+            transitionWithHistory(payment, PaymentStatus.FAILED, "Post-send failure: " + ex.getMessage());
+            throw new PaymentProcessingException("Payment processing failed after SENT: " + ex.getMessage(), ex);
+        }
     }
 
     /**
@@ -162,5 +173,25 @@ public class PaymentService {
     private Account lockAccount(String accountNumber) {
         return accountRepository.findByAccountNumberForUpdate(accountNumber)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
+    }
+
+    private Payment transitionWithHistory(Payment payment, PaymentStatus newStatus, String remarks) {
+        PaymentStatus oldStatus = payment.getStatus();
+        paymentValidator.validateStatusTransition(oldStatus, newStatus);
+
+        payment.setStatus(newStatus);
+        payment.setUpdatedAt(LocalDateTime.now());
+        Payment updated = paymentRepository.save(payment);
+
+        PaymentHistory history = new PaymentHistory();
+        history.setPaymentId(payment.getId());
+        history.setOldStatus(oldStatus);
+        history.setNewStatus(newStatus);
+        history.setChangedAt(LocalDateTime.now());
+        history.setRemarks(remarks);
+        history.setType(payment.getType());
+        paymentHistoryRepository.save(history);
+
+        return updated;
     }
 }
