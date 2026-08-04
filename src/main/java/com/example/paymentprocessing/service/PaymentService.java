@@ -91,23 +91,24 @@ public class PaymentService {
     }
 
     /**
-     * Processes a VALIDATED payment: verifies the supplied OTP code and, only if it
-     * succeeds, debits the source account and credits the destination account.
+     * Processes a payment from {@code CREATED} through to {@code COMPLETED}:
      *
-     * <p>Rules enforced (see business requirements for account-balance updates):
+     * <ol>
+     *   <li>Runs all payment validations; on success transitions to {@code VALIDATED}
+     *       and records the change in {@code payment_history}.</li>
+     *   <li>Verifies the supplied OTP; on success transitions to {@code SENT} and
+     *       records the change in history.</li>
+     *   <li>Debits the source account and credits the destination account; on success
+     *       transitions to {@code COMPLETED} and records the change in history.</li>
+     * </ol>
+     *
+     * <p>Rules enforced:
      * <ul>
-     *   <li>The payment must already be in {@code VALIDATED} status - i.e. all prior
-     *       payment validations have already passed.</li>
-     *   <li>If OTP verification fails, the payment is marked {@code FAILED} and no
-     *       account balance is touched; the caller must restart the payment process
-     *       by submitting a new payment.</li>
-     *   <li>If OTP verification succeeds, funds are moved atomically and the payment
-     *       transitions {@code VALIDATED -> SENT -> COMPLETED}, reusing the existing
-     *       {@link #updatePaymentStatus(Long, PaymentStatus)} logic (and its history
-     *       trail) at each step.</li>
-     *   <li>Any failure after OTP success (insufficient funds, missing account, etc.)
-     *       rolls back the entire transaction, including the SENT/COMPLETED
-     *       transitions and both account balance changes.</li>
+     *   <li>The payment must be in {@code CREATED} status when processing starts.</li>
+     *   <li>If validation or OTP verification fails, the payment is marked {@code FAILED}
+     *       and no account balance is touched.</li>
+     *   <li>If the balance update fails after OTP success, the payment is marked
+     *       {@code FAILED} from {@code SENT} status.</li>
      * </ul>
      */
     @Transactional(noRollbackFor = { OtpVerificationFailedException.class, PaymentProcessingException.class })
@@ -139,22 +140,15 @@ public class PaymentService {
                             + ". No account balance was updated; please restart the payment process.");
         }
 
+        transitionWithHistory(payment, PaymentStatus.SENT, "OTP verification succeeded");
+
         try {
             transferFunds(payment);
-            transitionWithHistory(payment, PaymentStatus.SENT, "Account balance update completed successfully");
+            return transitionWithHistory(payment, PaymentStatus.COMPLETED,
+                    "Account balance update completed successfully");
         } catch (Exception ex) {
             transitionWithHistory(payment, PaymentStatus.FAILED, "Balance update failed: " + ex.getMessage());
             throw new PaymentProcessingException("Payment processing failed: " + ex.getMessage(), ex);
-        }
-
-        try {
-            return transitionWithHistory(payment, PaymentStatus.COMPLETED, "Transfer completed successfully");
-        } catch (Exception ex) {
-            if (payment.getStatus() != PaymentStatus.SENT) {
-                payment.setStatus(PaymentStatus.SENT);
-            }
-            transitionWithHistory(payment, PaymentStatus.FAILED, "Post-send failure: " + ex.getMessage());
-            throw new PaymentProcessingException("Payment processing failed after SENT: " + ex.getMessage(), ex);
         }
     }
 

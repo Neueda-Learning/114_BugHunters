@@ -131,9 +131,10 @@ class PaymentServiceTest {
         assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
         assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
         assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(1).getRemarks()).contains("OTP verification succeeded");
         assertThat(history.get(2).getOldStatus()).isEqualTo(PaymentStatus.SENT);
         assertThat(history.get(2).getNewStatus()).isEqualTo(PaymentStatus.COMPLETED);
-        assertThat(history).allMatch(h -> h.getRemarks() != null && !h.getRemarks().isBlank());
+        assertThat(history.get(2).getRemarks()).contains("Account balance update completed successfully");
     }
 
     @Test
@@ -180,7 +181,7 @@ class PaymentServiceTest {
     }
 
     @Test
-    void processPayment_balanceUpdateFailure_marksValidatedToFailed() {
+    void processPayment_balanceUpdateFailure_marksSentToFailed() {
         Payment payment = buildPayment(1L, PaymentStatus.CREATED);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -193,15 +194,17 @@ class PaymentServiceTest {
                 .hasMessageContaining("Payment processing failed");
 
         ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
-        verify(paymentHistoryRepository, times(2)).save(historyCaptor.capture());
+        verify(paymentHistoryRepository, times(3)).save(historyCaptor.capture());
         List<PaymentHistory> history = historyCaptor.getAllValues();
         assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
-        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
-        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(2).getOldStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(2).getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(history.get(2).getRemarks()).contains("Balance update failed");
     }
 
     @Test
-    void processPayment_unexpectedErrorAfterSent_marksSentToFailed() {
+    void processPayment_unexpectedErrorAfterBalanceUpdate_marksSentToFailed() {
         Payment payment = buildPayment(1L, PaymentStatus.CREATED);
         Account fromAccount = buildAccount("ACC001", 500.0);
         Account toAccount = buildAccount("ACC002", 200.0);
@@ -215,8 +218,8 @@ class PaymentServiceTest {
         final int[] historySaveCount = {0};
         doAnswer(invocation -> {
             historySaveCount[0]++;
-            if (historySaveCount[0] == 3) {
-                throw new RuntimeException("Post-sent failure");
+            if (historySaveCount[0] == 4) {
+                throw new RuntimeException("Post-balance-update failure");
             }
             return invocation.getArgument(0);
         }).when(paymentHistoryRepository).save(any(PaymentHistory.class));
