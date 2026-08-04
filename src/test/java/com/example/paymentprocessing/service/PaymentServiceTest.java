@@ -107,8 +107,59 @@ class PaymentServiceTest {
     }
 
     @Test
-    void processPayment_happyPath_createdToValidatedToSentToCompleted() {
+    void validatePayment_happyPath_marksCreatedToValidated() {
         Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Payment result = paymentService.validatePayment(1L);
+
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.VALIDATED);
+
+        ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
+        verify(paymentHistoryRepository).save(historyCaptor.capture());
+        PaymentHistory history = historyCaptor.getValue();
+        assertThat(history.getOldStatus()).isEqualTo(PaymentStatus.CREATED);
+        assertThat(history.getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.getRemarks()).contains("All payment validations passed");
+    }
+
+    @Test
+    void validatePayment_validationFailure_marksCreatedToFailed() {
+        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_AMOUNT: Amount must be greater than 0"))
+                .when(paymentValidator).validateAmount(anyDouble());
+
+        assertThatThrownBy(() -> paymentService.validatePayment(1L))
+                .isInstanceOf(PaymentProcessingException.class)
+                .hasMessageContaining("Payment validation failed");
+
+        ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
+        verify(paymentHistoryRepository).save(historyCaptor.capture());
+        PaymentHistory failedHistory = historyCaptor.getValue();
+        assertThat(failedHistory.getOldStatus()).isEqualTo(PaymentStatus.CREATED);
+        assertThat(failedHistory.getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(failedHistory.getRemarks()).contains("Validation failed");
+    }
+
+    @Test
+    void validatePayment_rejectsInvalidStartState() {
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> paymentService.validatePayment(1L))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessageContaining("must be in CREATED status");
+
+        verify(paymentRepository, never()).save(any(Payment.class));
+        verify(paymentHistoryRepository, never()).save(any(PaymentHistory.class));
+    }
+
+    @Test
+    void processPayment_happyPath_validatedToSentToCompleted() {
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
         Account fromAccount = buildAccount("ACC001", 500.0);
         Account toAccount = buildAccount("ACC002", 200.0);
 
@@ -125,44 +176,33 @@ class PaymentServiceTest {
         assertThat(toAccount.getBalance()).isEqualTo(300.0);
 
         ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
-        verify(paymentHistoryRepository, times(3)).save(historyCaptor.capture());
+        verify(paymentHistoryRepository, times(2)).save(historyCaptor.capture());
         List<PaymentHistory> history = historyCaptor.getAllValues();
-        assertThat(history.get(0).getOldStatus()).isEqualTo(PaymentStatus.CREATED);
-        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
-        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
-        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.SENT);
-        assertThat(history.get(1).getRemarks()).contains("OTP verification succeeded");
-        assertThat(history.get(2).getOldStatus()).isEqualTo(PaymentStatus.SENT);
-        assertThat(history.get(2).getNewStatus()).isEqualTo(PaymentStatus.COMPLETED);
-        assertThat(history.get(2).getRemarks()).contains("Account balance update completed successfully");
+        assertThat(history.get(0).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(0).getRemarks()).contains("OTP verification succeeded");
+        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(history.get(1).getRemarks()).contains("Account balance update completed successfully");
     }
 
     @Test
-    void processPayment_validationFailure_marksCreatedToFailedAndStopsFurtherProcessing() {
+    void processPayment_validationFailure_rejectsNonValidatedPayment() {
         Payment payment = buildPayment(1L, PaymentStatus.CREATED);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_AMOUNT: Amount must be greater than 0"))
-                .when(paymentValidator).validateAmount(anyDouble());
 
         assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
-                .isInstanceOf(PaymentProcessingException.class)
-                .hasMessageContaining("Payment validation failed");
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessageContaining("must be in VALIDATED status");
 
         verifyNoInteractions(otpVerificationService);
         verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
-
-        ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
-        verify(paymentHistoryRepository).save(historyCaptor.capture());
-        PaymentHistory failedHistory = historyCaptor.getValue();
-        assertThat(failedHistory.getOldStatus()).isEqualTo(PaymentStatus.CREATED);
-        assertThat(failedHistory.getNewStatus()).isEqualTo(PaymentStatus.FAILED);
-        assertThat(failedHistory.getRemarks()).contains("Validation failed");
+        verify(paymentHistoryRepository, never()).save(any(PaymentHistory.class));
     }
 
     @Test
     void processPayment_otpFailure_marksValidatedToFailedWithoutBalanceUpdate() {
-        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
         when(otpVerificationService.isOtpValid(1L, "999999")).thenReturn(false);
@@ -173,16 +213,15 @@ class PaymentServiceTest {
         verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
 
         ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
-        verify(paymentHistoryRepository, times(2)).save(historyCaptor.capture());
-        List<PaymentHistory> history = historyCaptor.getAllValues();
-        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
-        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
-        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+        verify(paymentHistoryRepository).save(historyCaptor.capture());
+        PaymentHistory history = historyCaptor.getValue();
+        assertThat(history.getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.getNewStatus()).isEqualTo(PaymentStatus.FAILED);
     }
 
     @Test
     void processPayment_balanceUpdateFailure_marksSentToFailed() {
-        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
         when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
@@ -194,18 +233,17 @@ class PaymentServiceTest {
                 .hasMessageContaining("Payment processing failed");
 
         ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
-        verify(paymentHistoryRepository, times(3)).save(historyCaptor.capture());
+        verify(paymentHistoryRepository, times(2)).save(historyCaptor.capture());
         List<PaymentHistory> history = historyCaptor.getAllValues();
-        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.VALIDATED);
-        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.SENT);
-        assertThat(history.get(2).getOldStatus()).isEqualTo(PaymentStatus.SENT);
-        assertThat(history.get(2).getNewStatus()).isEqualTo(PaymentStatus.FAILED);
-        assertThat(history.get(2).getRemarks()).contains("Balance update failed");
+        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(history.get(1).getRemarks()).contains("Balance update failed");
     }
 
     @Test
     void processPayment_unexpectedErrorAfterBalanceUpdate_marksSentToFailed() {
-        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
         Account fromAccount = buildAccount("ACC001", 500.0);
         Account toAccount = buildAccount("ACC002", 200.0);
 
@@ -218,7 +256,7 @@ class PaymentServiceTest {
         final int[] historySaveCount = {0};
         doAnswer(invocation -> {
             historySaveCount[0]++;
-            if (historySaveCount[0] == 4) {
+            if (historySaveCount[0] == 2) {
                 throw new RuntimeException("Post-balance-update failure");
             }
             return invocation.getArgument(0);
@@ -228,7 +266,7 @@ class PaymentServiceTest {
                 .isInstanceOf(PaymentProcessingException.class);
 
         ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
-        verify(paymentHistoryRepository, times(4)).save(historyCaptor.capture());
+        verify(paymentHistoryRepository, times(2)).save(historyCaptor.capture());
         List<PaymentHistory> history = historyCaptor.getAllValues();
         PaymentHistory last = history.get(history.size() - 1);
         assertThat(last.getOldStatus()).isEqualTo(PaymentStatus.SENT);
@@ -242,7 +280,7 @@ class PaymentServiceTest {
 
         assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
                 .isInstanceOf(InvalidStatusTransitionException.class)
-                .hasMessageContaining("must be in CREATED status");
+                .hasMessageContaining("must be in VALIDATED status");
 
         verifyNoInteractions(otpVerificationService);
         verify(accountRepository, never()).findByAccountNumberForUpdate(anyString());
@@ -252,7 +290,7 @@ class PaymentServiceTest {
 
     @Test
     void processPayment_whenAccountMissing_throwsAccountNotFoundException() {
-        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
         when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);

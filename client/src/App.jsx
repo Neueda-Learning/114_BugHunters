@@ -6,6 +6,7 @@ import {
   getPayments,
   processPayment,
   sendOtp,
+  validatePayment,
 } from './api/payments'
 import AccountDashboard from './features/payments/components/AccountDashboard'
 import OtpModal from './features/payments/components/OtpModal'
@@ -24,6 +25,7 @@ function App() {
   const [historyError, setHistoryError] = useState('')
 
   const [otpModal, setOtpModal] = useState({ paymentId: null, sending: false, submitting: false, error: '' })
+  const [validatingId, setValidatingId] = useState(null)
 
   const [submitLoading, setSubmitLoading] = useState(false)
   const [formError, setFormError] = useState('')
@@ -129,7 +131,21 @@ function App() {
     void loadHistory(paymentId)
   }
 
-  async function handleProcessClick(paymentId) {
+  async function handleValidateClick(paymentId) {
+    setListError('')
+    setValidatingId(paymentId)
+    try {
+      await validatePayment(paymentId)
+      await loadPayments(listStatusFilter)
+    } catch (error) {
+      setListError(error.message || 'Payment validation failed')
+      await loadPayments(listStatusFilter)
+    } finally {
+      setValidatingId(null)
+    }
+  }
+
+  async function handleSendOtpClick(paymentId) {
     setOtpModal({ paymentId, sending: true, submitting: false, error: '' })
     try {
       await sendOtp(paymentId)
@@ -353,10 +369,20 @@ function App() {
                       {payment.status === 'CREATED' && (
                         <button
                           type="button"
-                          className="link-button process-btn"
-                          onClick={() => handleProcessClick(payment.id)}
+                          className="link-button validate-btn"
+                          onClick={() => handleValidateClick(payment.id)}
+                          disabled={validatingId === payment.id}
                         >
-                          Process
+                          {validatingId === payment.id ? 'Validating...' : 'Validate'}
+                        </button>
+                      )}
+                      {payment.status === 'VALIDATED' && (
+                        <button
+                          type="button"
+                          className="link-button process-btn"
+                          onClick={() => handleSendOtpClick(payment.id)}
+                        >
+                          Send OTP
                         </button>
                       )}
                     </td>

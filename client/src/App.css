@@ -431,6 +431,12 @@ tbody td {
   align-items: center;
 }
 
+.validate-btn {
+  background: linear-gradient(120deg, #10b981, #059669);
+  color: #fff;
+  border-color: transparent;
+}
+
 .process-btn {
   background: linear-gradient(120deg, #0ea5e9, #1e6ff2);
   color: #fff;

@@ -74,13 +74,18 @@ public class PaymentService {
     }
 
     /**
-     * Generates an OTP for the given payment and delivers it to the configured
+     * Generates an OTP for a {@code VALIDATED} payment and delivers it to the configured
      * recipient email address ({@code app.otp.recipient-email}).
      *
      * @param paymentId the payment for which the OTP should be sent
      */
     public void sendOtpForPayment(Long paymentId) {
-        getPaymentById(paymentId); // ensure payment exists
+        Payment payment = getPaymentById(paymentId);
+        if (payment.getStatus() != PaymentStatus.VALIDATED) {
+            throw new InvalidStatusTransitionException(
+                    "Payment " + paymentId + " must be in VALIDATED status to receive an OTP, but is "
+                            + payment.getStatus());
+        }
         otpVerificationService.sendOtp(paymentId, otpRecipientEmail);
     }
 
@@ -91,33 +96,16 @@ public class PaymentService {
     }
 
     /**
-     * Processes a payment from {@code CREATED} through to {@code COMPLETED}:
-     *
-     * <ol>
-     *   <li>Runs all payment validations; on success transitions to {@code VALIDATED}
-     *       and records the change in {@code payment_history}.</li>
-     *   <li>Verifies the supplied OTP; on success transitions to {@code SENT} and
-     *       records the change in history.</li>
-     *   <li>Debits the source account and credits the destination account; on success
-     *       transitions to {@code COMPLETED} and records the change in history.</li>
-     * </ol>
-     *
-     * <p>Rules enforced:
-     * <ul>
-     *   <li>The payment must be in {@code CREATED} status when processing starts.</li>
-     *   <li>If validation or OTP verification fails, the payment is marked {@code FAILED}
-     *       and no account balance is touched.</li>
-     *   <li>If the balance update fails after OTP success, the payment is marked
-     *       {@code FAILED} from {@code SENT} status.</li>
-     * </ul>
+     * Runs all payment validations for a {@code CREATED} payment. On success transitions
+     * to {@code VALIDATED} and records the change in {@code payment_history}.
      */
-    @Transactional(noRollbackFor = { OtpVerificationFailedException.class, PaymentProcessingException.class })
-    public Payment processPayment(Long paymentId, String otpCode) {
+    @Transactional(noRollbackFor = PaymentProcessingException.class)
+    public Payment validatePayment(Long paymentId) {
         Payment payment = getPaymentById(paymentId);
 
         if (payment.getStatus() != PaymentStatus.CREATED) {
             throw new InvalidStatusTransitionException(
-                    "Payment " + paymentId + " must be in CREATED status to be processed, but is "
+                    "Payment " + paymentId + " must be in CREATED status to be validated, but is "
                             + payment.getStatus());
         }
 
@@ -126,10 +114,31 @@ public class PaymentService {
             paymentValidator.validateCurrency(payment.getCurrency());
             Account fromAccount = paymentValidator.validateAccounts(payment.getAccountFrom(), payment.getAccountTo());
             paymentValidator.validateSufficientFunds(fromAccount, payment.getAmount());
-            transitionWithHistory(payment, PaymentStatus.VALIDATED, "All payment validations passed");
+            return transitionWithHistory(payment, PaymentStatus.VALIDATED, "All payment validations passed");
         } catch (ResponseStatusException ex) {
             transitionWithHistory(payment, PaymentStatus.FAILED, "Validation failed: " + ex.getReason());
             throw new PaymentProcessingException("Payment validation failed: " + ex.getReason(), ex);
+        }
+    }
+
+    /**
+     * Processes a {@code VALIDATED} payment through OTP verification and balance update:
+     *
+     * <ol>
+     *   <li>Verifies the supplied OTP; on success transitions to {@code SENT} and
+     *       records the change in history.</li>
+     *   <li>Debits the source account and credits the destination account; on success
+     *       transitions to {@code COMPLETED} and records the change in history.</li>
+     * </ol>
+     */
+    @Transactional(noRollbackFor = { OtpVerificationFailedException.class, PaymentProcessingException.class })
+    public Payment processPayment(Long paymentId, String otpCode) {
+        Payment payment = getPaymentById(paymentId);
+
+        if (payment.getStatus() != PaymentStatus.VALIDATED) {
+            throw new InvalidStatusTransitionException(
+                    "Payment " + paymentId + " must be in VALIDATED status to be processed, but is "
+                            + payment.getStatus());
         }
 
         if (!otpVerificationService.isOtpValid(paymentId, otpCode)) {

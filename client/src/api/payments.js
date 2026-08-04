@@ -48,6 +48,10 @@ export function getPaymentHistory(paymentId) {
   return request(`/api/payments/${paymentId}/history`)
 }
 
+export function validatePayment(paymentId) {
+  return request(`/api/payments/${paymentId}/validate`, { method: 'POST' })
+}
+
 export function sendOtp(paymentId) {
   return request(`/api/payments/${paymentId}/send-otp`, { method: 'POST' })
 }

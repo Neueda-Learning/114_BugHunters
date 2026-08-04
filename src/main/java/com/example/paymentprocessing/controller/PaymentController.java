@@ -55,6 +55,11 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.updatePaymentStatus(id, status));
     }
 
+    @PostMapping("/{id}/validate")
+    public ResponseEntity<Payment> validatePayment(@PathVariable Long id) {
+        return ResponseEntity.ok(paymentService.validatePayment(id));
+    }
+
     @PostMapping("/{id}/process")
     public ResponseEntity<Payment> processPayment(@PathVariable Long id,
             @Valid @RequestBody OtpVerificationRequest request) {
