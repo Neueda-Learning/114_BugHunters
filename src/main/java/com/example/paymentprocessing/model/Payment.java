@@ -112,9 +112,6 @@ public class Payment {
     @Column(name = "status", nullable = false)
     private PaymentStatus status;
 
-    // Idempotency key: generated server-side in PaymentService#createPayment, never
-    // supplied by the client, so it must not carry a client-facing @NotBlank constraint
-    // (the request body legitimately has no key when it arrives).
     @Column(name = "idempotency_key", nullable = false, unique = true)
     private String key;
 

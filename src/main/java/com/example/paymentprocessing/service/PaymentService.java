@@ -38,17 +38,14 @@ public class PaymentService {
     }
 
     public Payment createPayment(Payment payment) {
-        // Idempotency key is generated server-side; clients cannot supply their own.
-        // Generated *before* validation so PaymentValidator's blank/duplicate-key
-        // checks operate on the real, final key rather than the client's (absent) input.
+        // Generate idempotency key server-side before validation so the
+        // duplicate-key check in the validator has a value to inspect.
         payment.setKey(UUID.randomUUID().toString());
-
-        paymentValidator.validateNewPayment(payment);
-
+        payment.setStatus(PaymentStatus.CREATED);
         payment.setCreatedAt(LocalDateTime.now());
         payment.setUpdatedAt(LocalDateTime.now());
 
-        payment.setStatus(PaymentStatus.CREATED);
+        paymentValidator.validateNewPayment(payment);
 
         return paymentRepository.save(payment);
     }

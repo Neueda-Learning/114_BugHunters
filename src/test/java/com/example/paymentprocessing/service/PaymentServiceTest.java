@@ -86,7 +86,7 @@ class PaymentServiceTest {
     }
 
     @Test
-    void createPayment_forcesCreatedStatus_evenWhenClientSuppliesDifferentStatus() {
+    void createPayment_alwaysSetsStatusToCreated_ignoresInputStatus() {
         Payment payment = buildPayment(null, PaymentStatus.VALIDATED);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
 
