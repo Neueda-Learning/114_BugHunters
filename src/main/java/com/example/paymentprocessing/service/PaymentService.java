@@ -2,6 +2,7 @@ package com.example.paymentprocessing.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,9 +31,11 @@ public class PaymentService {
 
         payment.setCreatedAt(LocalDateTime.now());
         payment.setUpdatedAt(LocalDateTime.now());
-        // A newly submitted payment always starts in the CREATED state,
-        // regardless of any status supplied by the caller.
+
         payment.setStatus(PaymentStatus.CREATED);
+
+        // Idempotency key is generated server-side; clients cannot supply their own.
+        payment.setKey(UUID.randomUUID().toString());
 
         return paymentRepository.save(payment);
     }
