@@ -5,6 +5,7 @@ import {
   getPaymentHistory,
   getPayments,
 } from './api/payments'
+import AccountDashboard from './features/payments/components/AccountDashboard'
 import './App.css'
 
 function App() {
@@ -31,7 +32,7 @@ function App() {
   })
 
   useEffect(() => {
-    void loadPayments(listStatusFilter)
+    void loadPayments('ALL')
   }, [])
 
   async function loadPayments(status) {
@@ -166,6 +167,13 @@ function App() {
           onClick={() => setActiveTab('history')}
         >
           Payment History
+        </button>
+        <button
+          type="button"
+          className={activeTab === 'dashboard' ? 'tab active' : 'tab'}
+          onClick={() => setActiveTab('dashboard')}
+        >
+          Account Dashboard
         </button>
       </nav>
 
@@ -378,6 +386,10 @@ function App() {
             </table>
           </div>
         </section>
+      )}
+
+      {activeTab === 'dashboard' && (
+        <AccountDashboard formatDate={formatDate} />
       )}
     </div>
   )
