@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.example.paymentprocessing.enums.PaymentStatus;
+import com.example.paymentprocessing.exception.InvalidStatusTransitionException;
 import com.example.paymentprocessing.model.Account;
 import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.repository.AccountRepository;
@@ -158,7 +159,7 @@ public class PaymentValidator {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_ACCOUNT: " + message);
     }
 
-    private ResponseStatusException invalidTransition(String message) {
-        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "INVALID_STATUS_TRANSITION: " + message);
+    private InvalidStatusTransitionException invalidTransition(String message) {
+        return new InvalidStatusTransitionException(message);
     }
 }
