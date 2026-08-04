@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import com.example.paymentprocessing.enums.PaymentStatus;
+import com.example.paymentprocessing.dto.OtpVerificationRequest;
 import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
 import com.example.paymentprocessing.service.PaymentService;
@@ -52,5 +53,12 @@ public class PaymentController {
     @PatchMapping("/{id}/status")
     public ResponseEntity<Payment> updatePaymentStatus(@PathVariable Long id, @RequestParam PaymentStatus status) {
         return ResponseEntity.ok(paymentService.updatePaymentStatus(id, status));
+    }
+
+    @PostMapping("/{id}/process")
+    public ResponseEntity<Payment> processPayment(@PathVariable Long id,
+            @Valid @RequestBody OtpVerificationRequest request) {
+        Payment processed = paymentService.processPayment(id, request.getOtpCode());
+        return ResponseEntity.ok(processed);
     }
 }
