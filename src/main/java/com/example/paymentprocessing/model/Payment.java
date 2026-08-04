@@ -112,9 +112,11 @@ public class Payment {
     @Column(name = "status", nullable = false)
     private PaymentStatus status;
 
-    @NotBlank(message = "Idempotency key is required")
+    // Idempotency key: generated server-side in PaymentService#createPayment, never
+    // supplied by the client, so it must not carry a client-facing @NotBlank constraint
+    // (the request body legitimately has no key when it arrives).
     @Column(name = "idempotency_key", nullable = false, unique = true)
-    private String key;   // idempotency key
+    private String key;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

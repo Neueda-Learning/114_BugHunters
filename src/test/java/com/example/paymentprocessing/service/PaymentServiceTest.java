@@ -1,10 +1,16 @@
 package com.example.paymentprocessing.service;
 
 import com.example.paymentprocessing.enums.PaymentStatus;
+import com.example.paymentprocessing.exception.AccountNotFoundException;
+import com.example.paymentprocessing.exception.InvalidStatusTransitionException;
+import com.example.paymentprocessing.exception.OtpVerificationFailedException;
+import com.example.paymentprocessing.model.Account;
 import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
+import com.example.paymentprocessing.repository.AccountRepository;
 import com.example.paymentprocessing.repository.PaymentHistoryRepository;
 import com.example.paymentprocessing.repository.PaymentRepository;
+import com.example.paymentprocessing.validation.PaymentValidator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,7 +26,10 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,6 +40,15 @@ class PaymentServiceTest {
 
     @Mock
     private PaymentHistoryRepository paymentHistoryRepository;
+
+    @Mock
+    private AccountRepository accountRepository;
+
+    @Mock
+    private PaymentValidator paymentValidator;
+
+    @Mock
+    private OtpVerificationService otpVerificationService;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -47,6 +65,14 @@ class PaymentServiceTest {
         return p;
     }
 
+    private Account buildAccount(String accountNumber, double balance) {
+        Account a = new Account();
+        a.setAccountNumber(accountNumber);
+        a.setBalance(balance);
+        a.setCurrency("USD");
+        return a;
+    }
+
     // --- createPayment ---
 
     @Test
@@ -60,13 +86,13 @@ class PaymentServiceTest {
     }
 
     @Test
-    void createPayment_keepsExistingStatus_whenStatusAlreadySet() {
+    void createPayment_forcesCreatedStatus_evenWhenClientSuppliesDifferentStatus() {
         Payment payment = buildPayment(null, PaymentStatus.VALIDATED);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Payment result = paymentService.createPayment(payment);
 
-        assertThat(result.getStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.CREATED);
     }
 
     @Test
@@ -239,5 +265,113 @@ class PaymentServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
                         .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    // --- processPayment ---
+
+    @Test
+    void processPayment_whenOtpValid_debitsSenderCreditsReceiverAndCompletesPayment() {
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
+        payment.setAmount(100.0);
+        Account fromAccount = buildAccount("ACC001", 500.0);
+        Account toAccount = buildAccount("ACC002", 200.0);
+
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
+        when(accountRepository.findByAccountNumberForUpdate("ACC001")).thenReturn(Optional.of(fromAccount));
+        when(accountRepository.findByAccountNumberForUpdate("ACC002")).thenReturn(Optional.of(toAccount));
+
+        Payment result = paymentService.processPayment(1L, "123456");
+
+        assertThat(result.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(fromAccount.getBalance()).isEqualTo(400.0);
+        assertThat(toAccount.getBalance()).isEqualTo(300.0);
+        verify(accountRepository).save(fromAccount);
+        verify(accountRepository).save(toAccount);
+        verify(paymentValidator).validateSufficientFunds(fromAccount, 100.0);
+    }
+
+    @Test
+    void processPayment_persistsSentThenCompletedHistoryTransitions() {
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
+        Account fromAccount = buildAccount("ACC001", 500.0);
+        Account toAccount = buildAccount("ACC002", 200.0);
+
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
+        when(accountRepository.findByAccountNumberForUpdate("ACC001")).thenReturn(Optional.of(fromAccount));
+        when(accountRepository.findByAccountNumberForUpdate("ACC002")).thenReturn(Optional.of(toAccount));
+
+        paymentService.processPayment(1L, "123456");
+
+        ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
+        verify(paymentHistoryRepository, org.mockito.Mockito.times(2)).save(historyCaptor.capture());
+        List<PaymentHistory> savedHistories = historyCaptor.getAllValues();
+        assertThat(savedHistories.get(0).getNewStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(savedHistories.get(1).getNewStatus()).isEqualTo(PaymentStatus.COMPLETED);
+    }
+
+    @Test
+    void processPayment_whenOtpInvalid_marksPaymentFailedAndThrowsWithoutTouchingBalances() {
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
+
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "999999")).thenReturn(false);
+
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "999999"))
+                .isInstanceOf(OtpVerificationFailedException.class);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        verifyNoInteractions(accountRepository);
+    }
+
+    @Test
+    void processPayment_whenPaymentNotValidated_throwsInvalidStatusTransitionException() {
+        Payment payment = buildPayment(1L, PaymentStatus.CREATED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
+                .isInstanceOf(InvalidStatusTransitionException.class);
+
+        verifyNoInteractions(otpVerificationService, accountRepository);
+    }
+
+    @Test
+    void processPayment_whenInsufficientFundsAtTransferTime_doesNotSaveAccountsOrCompletePayment() {
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
+        payment.setAmount(1000.0);
+        Account fromAccount = buildAccount("ACC001", 50.0);
+        Account toAccount = buildAccount("ACC002", 200.0);
+
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
+        when(accountRepository.findByAccountNumberForUpdate("ACC001")).thenReturn(Optional.of(fromAccount));
+        when(accountRepository.findByAccountNumberForUpdate("ACC002")).thenReturn(Optional.of(toAccount));
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_FUNDS"))
+                .when(paymentValidator).validateSufficientFunds(fromAccount, 1000.0);
+
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
+                .isInstanceOf(ResponseStatusException.class);
+
+        verify(accountRepository, never()).save(any(Account.class));
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SENT);
+    }
+
+    @Test
+    void processPayment_whenSourceAccountMissing_throwsAccountNotFoundException() {
+        Payment payment = buildPayment(1L, PaymentStatus.VALIDATED);
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(otpVerificationService.isOtpValid(1L, "123456")).thenReturn(true);
+        when(accountRepository.findByAccountNumberForUpdate("ACC001")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> paymentService.processPayment(1L, "123456"))
+                .isInstanceOf(AccountNotFoundException.class);
+
+        verify(accountRepository, never()).save(any(Account.class));
     }
 }
