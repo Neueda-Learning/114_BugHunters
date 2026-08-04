@@ -2,6 +2,7 @@ package com.example.paymentprocessing.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -10,24 +11,31 @@ import com.example.paymentprocessing.model.Payment;
 import com.example.paymentprocessing.model.PaymentHistory;
 import com.example.paymentprocessing.repository.PaymentHistoryRepository;
 import com.example.paymentprocessing.repository.PaymentRepository;
+import com.example.paymentprocessing.validation.PaymentValidator;
 
 @Service
 public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentHistoryRepository paymentHistoryRepository;
+    private final PaymentValidator paymentValidator;
 
-    public PaymentService(PaymentRepository paymentRepository, PaymentHistoryRepository paymentHistoryRepository) {
+    public PaymentService(PaymentRepository paymentRepository, PaymentHistoryRepository paymentHistoryRepository,
+            PaymentValidator paymentValidator) {
         this.paymentRepository = paymentRepository;
         this.paymentHistoryRepository = paymentHistoryRepository;
+        this.paymentValidator = paymentValidator;
     }
 
     public Payment createPayment(Payment payment) {
+        paymentValidator.validateNewPayment(payment);
+
         payment.setCreatedAt(LocalDateTime.now());
         payment.setUpdatedAt(LocalDateTime.now());
 
-        if (payment.getStatus() == null) {
-            payment.setStatus(PaymentStatus.CREATED);
-        }
+        payment.setStatus(PaymentStatus.CREATED);
+
+        // Idempotency key is generated server-side; clients cannot supply their own.
+        payment.setKey(UUID.randomUUID().toString());
 
         return paymentRepository.save(payment);
     }
@@ -53,6 +61,8 @@ public class PaymentService {
     public Payment updatePaymentStatus(Long id, PaymentStatus newStatus) {
         Payment payment = getPaymentById(id);
         PaymentStatus oldStatus = payment.getStatus();
+
+        paymentValidator.validateStatusTransition(oldStatus, newStatus);
 
         payment.setStatus(newStatus);
         payment.setUpdatedAt(LocalDateTime.now());
