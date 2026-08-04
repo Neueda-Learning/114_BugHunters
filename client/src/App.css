@@ -215,6 +215,81 @@ tbody td {
   margin: 0;
 }
 
+.dashboard-error {
+  margin-top: 0.8rem;
+}
+
+.dashboard-summary {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.metric-card {
+  background: linear-gradient(140deg, #f9fcff, #eef5ff);
+  border: 1px solid #d8e5f6;
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+
+.metric-card p {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.metric-card h3 {
+  margin: 0.35rem 0 0;
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+
+.chart-panel {
+  margin-top: 1rem;
+  border: 1px solid #dbe7f8;
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: #fbfdff;
+}
+
+.chart-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.bar-chart {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.bar-row {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.bar-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  font-size: 0.85rem;
+}
+
+.bar-track {
+  height: 12px;
+  border-radius: 999px;
+  background: #e4ecf8;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  min-width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1e6ff2, #0ea5e9);
+  transition: width 280ms ease;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -242,5 +317,15 @@ tbody td {
   .form-actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .dashboard-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .dashboard-summary {
+    grid-template-columns: 1fr;
   }
 }
