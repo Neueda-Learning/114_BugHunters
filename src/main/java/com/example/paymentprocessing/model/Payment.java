@@ -112,7 +112,6 @@ public class Payment {
     @Column(name = "status", nullable = false)
     private PaymentStatus status;
 
-    @NotBlank(message = "Idempotency key is required")
     @Column(name = "idempotency_key", nullable = false, unique = true)
     private String key;   // idempotency key
 
