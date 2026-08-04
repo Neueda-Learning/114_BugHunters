@@ -8,16 +8,14 @@ import com.example.paymentprocessing.service.OtpVerificationService;
 
 /**
  * Provides a temporary fallback {@link OtpVerificationService} bean so the
- * payment-processing flow is functional before the real email-OTP feature
- * (owned by another workstream) is merged.
+ * payment-processing flow is functional before real SMTP credentials are configured.
  *
- * <p>As soon as a teammate registers their own {@code OtpVerificationService}
- * bean, Spring will use that one instead of this fallback, thanks to
- * {@link ConditionalOnMissingBean}.
+ * <p>As soon as {@code EmailOtpVerificationService} is active (i.e. the
+ * {@code JavaMailSender} bean is present), Spring will use that bean instead,
+ * thanks to {@link ConditionalOnMissingBean}.
  *
  * <p><b>IMPORTANT:</b> this fallback only accepts a fixed development code and
- * must never be relied on in production. Remove this class once real OTP
- * verification is implemented.
+ * must never be relied on in production.
  */
 @Configuration
 public class OtpVerificationConfig {
@@ -27,6 +25,16 @@ public class OtpVerificationConfig {
     @Bean
     @ConditionalOnMissingBean(OtpVerificationService.class)
     public OtpVerificationService otpVerificationService() {
-        return (paymentId, otpCode) -> DEV_FALLBACK_OTP_CODE.equals(otpCode);
+        return new OtpVerificationService() {
+            @Override
+            public void sendOtp(Long paymentId, String recipientEmail) {
+                // dev stub: OTP is always DEV_FALLBACK_OTP_CODE — nothing is sent
+            }
+
+            @Override
+            public boolean isOtpValid(Long paymentId, String otpCode) {
+                return DEV_FALLBACK_OTP_CODE.equals(otpCode);
+            }
+        };
     }
 }

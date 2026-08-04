@@ -3,6 +3,7 @@ package com.example.paymentprocessing.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,9 @@ public class PaymentService {
     private final AccountRepository accountRepository;
     private final PaymentValidator paymentValidator;
     private final OtpVerificationService otpVerificationService;
+
+    @Value("${app.otp.recipient-email}")
+    private String otpRecipientEmail;
 
     public PaymentService(PaymentRepository paymentRepository, PaymentHistoryRepository paymentHistoryRepository,
             AccountRepository accountRepository, PaymentValidator paymentValidator,
@@ -67,6 +71,17 @@ public class PaymentService {
     public List<PaymentHistory> getPaymentHistoryByPaymentId(Long paymentId) {
         getPaymentById(paymentId); // ensure payment exists
         return paymentHistoryRepository.findByPaymentId(paymentId);
+    }
+
+    /**
+     * Generates an OTP for the given payment and delivers it to the configured
+     * recipient email address ({@code app.otp.recipient-email}).
+     *
+     * @param paymentId the payment for which the OTP should be sent
+     */
+    public void sendOtpForPayment(Long paymentId) {
+        getPaymentById(paymentId); // ensure payment exists
+        otpVerificationService.sendOtp(paymentId, otpRecipientEmail);
     }
 
     @Transactional

@@ -61,4 +61,10 @@ public class PaymentController {
         Payment processed = paymentService.processPayment(id, request.getOtpCode());
         return ResponseEntity.ok(processed);
     }
+
+    @PostMapping("/{id}/send-otp")
+    public ResponseEntity<Void> sendOtp(@PathVariable Long id) {
+        paymentService.sendOtpForPayment(id);
+        return ResponseEntity.ok().build();
+    }
 }

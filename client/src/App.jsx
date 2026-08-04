@@ -4,8 +4,11 @@ import {
   createPayment,
   getPaymentHistory,
   getPayments,
+  processPayment,
+  sendOtp,
 } from './api/payments'
 import AccountDashboard from './features/payments/components/AccountDashboard'
+import OtpModal from './features/payments/components/OtpModal'
 import './App.css'
 
 function App() {
@@ -19,6 +22,8 @@ function App() {
   const [historyPaymentId, setHistoryPaymentId] = useState('')
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState('')
+
+  const [otpModal, setOtpModal] = useState({ paymentId: null, sending: false, submitting: false, error: '' })
 
   const [submitLoading, setSubmitLoading] = useState(false)
   const [formError, setFormError] = useState('')
@@ -122,6 +127,31 @@ function App() {
     setActiveTab('history')
     setHistoryPaymentId(String(paymentId))
     void loadHistory(paymentId)
+  }
+
+  async function handleProcessClick(paymentId) {
+    setOtpModal({ paymentId, sending: true, submitting: false, error: '' })
+    try {
+      await sendOtp(paymentId)
+      setOtpModal((prev) => ({ ...prev, sending: false }))
+    } catch (error) {
+      setOtpModal((prev) => ({ ...prev, sending: false, error: error.message || 'Failed to send OTP' }))
+    }
+  }
+
+  async function handleOtpSubmit(otpCode) {
+    setOtpModal((prev) => ({ ...prev, submitting: true, error: '' }))
+    try {
+      await processPayment(otpModal.paymentId, otpCode)
+      setOtpModal({ paymentId: null, sending: false, submitting: false, error: '' })
+      await loadPayments(listStatusFilter)
+    } catch (error) {
+      setOtpModal((prev) => ({ ...prev, submitting: false, error: error.message || 'OTP verification failed' }))
+    }
+  }
+
+  function handleOtpCancel() {
+    setOtpModal({ paymentId: null, sending: false, submitting: false, error: '' })
   }
 
   function formatDate(value) {
@@ -287,7 +317,7 @@ function App() {
                   <th>Status</th>
                   <th>Type</th>
                   <th>Created</th>
-                  <th>History</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -312,14 +342,23 @@ function App() {
                     </td>
                     <td>{payment.type}</td>
                     <td>{formatDate(payment.createdAt)}</td>
-                    <td>
+                    <td className="actions-cell">
                       <button
                         type="button"
                         className="link-button"
                         onClick={() => openHistoryForPayment(payment.id)}
                       >
-                        View
+                        History
                       </button>
+                      {payment.status === 'CREATED' && (
+                        <button
+                          type="button"
+                          className="link-button process-btn"
+                          onClick={() => handleProcessClick(payment.id)}
+                        >
+                          Process
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -390,6 +429,17 @@ function App() {
 
       {activeTab === 'dashboard' && (
         <AccountDashboard formatDate={formatDate} />
+      )}
+
+      {otpModal.paymentId !== null && (
+        <OtpModal
+          paymentId={otpModal.paymentId}
+          sending={otpModal.sending}
+          submitting={otpModal.submitting}
+          error={otpModal.error}
+          onSubmit={handleOtpSubmit}
+          onCancel={handleOtpCancel}
+        />
       )}
     </div>
   )
