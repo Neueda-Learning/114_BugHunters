@@ -6,7 +6,6 @@ pipeline {
     }
 
     environment {
-        IMAGE_TAG = 'latest'
         MYSQL_DATABASE = 'paymentdb'
     }
 
@@ -20,16 +19,13 @@ pipeline {
         stage('Deploy with Docker Compose') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'dockerhub-username', variable: 'DOCKER_USERNAME'),
                     string(credentialsId: 'mysql-root-password', variable: 'MYSQL_ROOT_PASSWORD')
                 ]) {
                     script {
                         if (isUnix()) {
-                            sh 'docker-compose pull'
-                            sh 'docker-compose up -d --remove-orphans'
+                            sh 'docker-compose up -d --build --remove-orphans'
                         } else {
-                            bat 'docker-compose pull'
-                            bat 'docker-compose up -d --remove-orphans'
+                            bat 'docker-compose up -d --build --remove-orphans'
                         }
                     }
                 }
