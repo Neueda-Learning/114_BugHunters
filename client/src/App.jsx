@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PAYMENT_STATUSES,
   createPayment,
@@ -65,7 +65,17 @@ function App() {
     setHistoryError('')
     try {
       const data = await getPaymentHistory(paymentId)
-      setHistoryItems(data)
+      const sortedHistory = [...data].sort((a, b) => {
+        const dateA = new Date(a.changedAt).getTime()
+        const dateB = new Date(b.changedAt).getTime()
+
+        if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+          return dateB - dateA
+        }
+
+        return (b.id ?? 0) - (a.id ?? 0)
+      })
+      setHistoryItems(sortedHistory)
     } catch (error) {
       setHistoryItems([])
       setHistoryError(error.message || 'Unable to load payment history')
@@ -181,6 +191,26 @@ function App() {
     }
     return date.toLocaleString()
   }
+
+  function formatAmount(value) {
+    const amount = Number(value)
+    if (!Number.isFinite(amount)) {
+      return '-'
+    }
+
+    return amount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }
+
+  const latestHistoryEntry = useMemo(() => {
+    if (historyItems.length === 0) {
+      return null
+    }
+
+    return historyItems[0]
+  }, [historyItems])
 
   return (
     <div className="app-shell">
@@ -349,7 +379,7 @@ function App() {
                     <td>{payment.id}</td>
                     <td>{payment.accountFrom}</td>
                     <td>{payment.accountTo}</td>
-                    <td>{payment.amount}</td>
+                    <td>{formatAmount(payment.amount)}</td>
                     <td>{payment.currency}</td>
                     <td>
                       <span className={`status-pill ${payment.status?.toLowerCase() || ''}`}>
@@ -419,6 +449,27 @@ function App() {
 
           {historyError && <p className="error-msg">{historyError}</p>}
 
+          {latestHistoryEntry && (
+            <div className="history-summary">
+              <article className="metric-card">
+                <p>Latest Status</p>
+                <h3>
+                  <span className={`status-pill ${latestHistoryEntry.newStatus?.toLowerCase() || ''}`}>
+                    {latestHistoryEntry.newStatus}
+                  </span>
+                </h3>
+              </article>
+              <article className="metric-card">
+                <p>Latest Update</p>
+                <h3>{formatDate(latestHistoryEntry.changedAt)}</h3>
+              </article>
+              <article className="metric-card">
+                <p>Payment Method</p>
+                <h3>{latestHistoryEntry.type || '-'}</h3>
+              </article>
+            </div>
+          )}
+
           <div className="table-wrap">
             <table>
               <thead>
@@ -427,13 +478,15 @@ function App() {
                   <th>Payment ID</th>
                   <th>Old Status</th>
                   <th>New Status</th>
+                  <th>Type</th>
+                  <th>Remarks</th>
                   <th>Changed At</th>
                 </tr>
               </thead>
               <tbody>
                 {historyItems.length === 0 && !historyLoading && (
                   <tr>
-                    <td colSpan="5" className="empty-cell">
+                    <td colSpan="7" className="empty-cell">
                       No history records to display.
                     </td>
                   </tr>
@@ -442,8 +495,20 @@ function App() {
                   <tr key={entry.id}>
                     <td>{entry.id}</td>
                     <td>{entry.paymentId}</td>
-                    <td>{entry.oldStatus || '-'}</td>
-                    <td>{entry.newStatus}</td>
+                    <td>
+                      {entry.oldStatus ? (
+                        <span className={`status-pill ${entry.oldStatus.toLowerCase()}`}>{entry.oldStatus}</span>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td>
+                      <span className={`status-pill ${entry.newStatus?.toLowerCase() || ''}`}>
+                        {entry.newStatus || '-'}
+                      </span>
+                    </td>
+                    <td>{entry.type || '-'}</td>
+                    <td className="history-remarks">{entry.remarks || '-'}</td>
                     <td>{formatDate(entry.changedAt)}</td>
                   </tr>
                 ))}

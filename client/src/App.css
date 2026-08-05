@@ -226,6 +226,13 @@ tbody td {
   gap: 0.8rem;
 }
 
+.history-summary {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
 .metric-card {
   background: linear-gradient(140deg, #f9fcff, #eef5ff);
   border: 1px solid #d8e5f6;
@@ -322,10 +329,18 @@ tbody td {
   .dashboard-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .history-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
   .dashboard-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .history-summary {
     grid-template-columns: 1fr;
   }
 }
@@ -429,6 +444,14 @@ tbody td {
   display: flex;
   gap: 0.4rem;
   align-items: center;
+}
+
+.history-remarks {
+  min-width: 260px;
+  max-width: 420px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.4;
 }
 
 .validate-btn {
