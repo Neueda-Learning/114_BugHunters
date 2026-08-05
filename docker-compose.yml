@@ -3,27 +3,25 @@ services:
     image: mysql:8.0
     container_name: payment-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: n3u3da!
-      MYSQL_DATABASE: paymentdb
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-paymentdb}
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pn3u3da!"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${DOCKER_USERNAME}/payment-backend:${IMAGE_TAG:-latest}
     container_name: payment-backend
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/paymentdb?useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-paymentdb}?useSSL=false&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: n3u3da!
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     ports:
       - "8080:8080"
     depends_on:
@@ -31,11 +29,7 @@ services:
         condition: service_healthy
 
   frontend:
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: http://localhost:8080
+    image: ${DOCKER_USERNAME}/payment-frontend:${IMAGE_TAG:-latest}
     container_name: payment-frontend
     ports:
       - "5173:80"

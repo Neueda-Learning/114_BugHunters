@@ -2,11 +2,10 @@
 .gitignore
 .vscode
 .idea
+client/
 
 # Build outputs
 /target
-/client/dist
-/client/node_modules
 
 # Documentation and local artifacts
 /docs
