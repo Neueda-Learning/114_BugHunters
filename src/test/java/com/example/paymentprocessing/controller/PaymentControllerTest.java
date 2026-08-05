@@ -189,6 +189,28 @@ class PaymentControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    // --- POST /api/payments/{id}/validate ---
+
+    @Test
+    void validatePayment_returns200WithValidatedPayment() throws Exception {
+        Payment validated = buildPayment(1L, PaymentStatus.VALIDATED);
+        when(paymentService.validatePayment(1L)).thenReturn(validated);
+
+        mockMvc.perform(post("/api/payments/1/validate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("VALIDATED"));
+    }
+
+    @Test
+    void validatePayment_whenPaymentNotFound_returns404() throws Exception {
+        when(paymentService.validatePayment(99L))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found with id: 99"));
+
+        mockMvc.perform(post("/api/payments/99/validate"))
+                .andExpect(status().isNotFound());
+    }
+
     // --- POST /api/payments/{id}/process ---
 
     @Test

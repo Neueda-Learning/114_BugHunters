@@ -226,6 +226,13 @@ tbody td {
   gap: 0.8rem;
 }
 
+.history-summary {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
 .metric-card {
   background: linear-gradient(140deg, #f9fcff, #eef5ff);
   border: 1px solid #d8e5f6;
@@ -322,10 +329,140 @@ tbody td {
   .dashboard-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .history-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
   .dashboard-summary {
     grid-template-columns: 1fr;
   }
+
+  .history-summary {
+    grid-template-columns: 1fr;
+  }
 }
+
+/* ── OTP Modal ─────────────────────────────────────────────────────────── */
+
+.otp-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 25, 48, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: rise 180ms ease;
+}
+
+.otp-dialog {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 2rem;
+  width: min(440px, calc(100vw - 2rem));
+  box-shadow: 0 24px 60px rgba(7, 25, 48, 0.22);
+}
+
+.otp-title {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+}
+
+.otp-hint {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  margin: 0 0 1.2rem;
+  line-height: 1.5;
+}
+
+.otp-input {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 0.75rem;
+  transition: border-color 160ms ease;
+}
+
+.otp-input:focus {
+  outline: none;
+  border-color: var(--focus);
+}
+
+.otp-error {
+  margin-top: 0.7rem;
+}
+
+.otp-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.2rem;
+  justify-content: flex-end;
+}
+
+.otp-cancel-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.otp-cancel-btn:hover:not(:disabled) {
+  border-color: var(--focus);
+}
+
+.otp-sending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.otp-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #d8e5f6;
+  border-top-color: var(--accent-1, #1e6ff2);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.actions-cell {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.history-remarks {
+  min-width: 260px;
+  max-width: 420px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.validate-btn {
+  background: linear-gradient(120deg, #10b981, #059669);
+  color: #fff;
+  border-color: transparent;
+}
+
+.process-btn {
+  background: linear-gradient(120deg, #0ea5e9, #1e6ff2);
+  color: #fff;
+  border-color: transparent;
+}
+

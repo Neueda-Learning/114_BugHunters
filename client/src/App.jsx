@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PAYMENT_STATUSES,
   createPayment,
   getPaymentHistory,
   getPayments,
+  processPayment,
+  sendOtp,
+  validatePayment,
 } from './api/payments'
 import AccountDashboard from './features/payments/components/AccountDashboard'
+import OtpModal from './features/payments/components/OtpModal'
 import './App.css'
 
 function App() {
@@ -19,6 +23,9 @@ function App() {
   const [historyPaymentId, setHistoryPaymentId] = useState('')
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState('')
+
+  const [otpModal, setOtpModal] = useState({ paymentId: null, sending: false, submitting: false, error: '' })
+  const [validatingId, setValidatingId] = useState(null)
 
   const [submitLoading, setSubmitLoading] = useState(false)
   const [formError, setFormError] = useState('')
@@ -58,7 +65,17 @@ function App() {
     setHistoryError('')
     try {
       const data = await getPaymentHistory(paymentId)
-      setHistoryItems(data)
+      const sortedHistory = [...data].sort((a, b) => {
+        const dateA = new Date(a.changedAt).getTime()
+        const dateB = new Date(b.changedAt).getTime()
+
+        if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+          return dateB - dateA
+        }
+
+        return (b.id ?? 0) - (a.id ?? 0)
+      })
+      setHistoryItems(sortedHistory)
     } catch (error) {
       setHistoryItems([])
       setHistoryError(error.message || 'Unable to load payment history')
@@ -124,6 +141,45 @@ function App() {
     void loadHistory(paymentId)
   }
 
+  async function handleValidateClick(paymentId) {
+    setListError('')
+    setValidatingId(paymentId)
+    try {
+      await validatePayment(paymentId)
+      await loadPayments(listStatusFilter)
+    } catch (error) {
+      setListError(error.message || 'Payment validation failed')
+      await loadPayments(listStatusFilter)
+    } finally {
+      setValidatingId(null)
+    }
+  }
+
+  async function handleSendOtpClick(paymentId) {
+    setOtpModal({ paymentId, sending: true, submitting: false, error: '' })
+    try {
+      await sendOtp(paymentId)
+      setOtpModal((prev) => ({ ...prev, sending: false }))
+    } catch (error) {
+      setOtpModal((prev) => ({ ...prev, sending: false, error: error.message || 'Failed to send OTP' }))
+    }
+  }
+
+  async function handleOtpSubmit(otpCode) {
+    setOtpModal((prev) => ({ ...prev, submitting: true, error: '' }))
+    try {
+      await processPayment(otpModal.paymentId, otpCode)
+      setOtpModal({ paymentId: null, sending: false, submitting: false, error: '' })
+      await loadPayments(listStatusFilter)
+    } catch (error) {
+      setOtpModal((prev) => ({ ...prev, submitting: false, error: error.message || 'OTP verification failed' }))
+    }
+  }
+
+  function handleOtpCancel() {
+    setOtpModal({ paymentId: null, sending: false, submitting: false, error: '' })
+  }
+
   function formatDate(value) {
     if (!value) {
       return '-'
@@ -135,6 +191,26 @@ function App() {
     }
     return date.toLocaleString()
   }
+
+  function formatAmount(value) {
+    const amount = Number(value)
+    if (!Number.isFinite(amount)) {
+      return '-'
+    }
+
+    return amount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }
+
+  const latestHistoryEntry = useMemo(() => {
+    if (historyItems.length === 0) {
+      return null
+    }
+
+    return historyItems[0]
+  }, [historyItems])
 
   return (
     <div className="app-shell">
@@ -287,7 +363,7 @@ function App() {
                   <th>Status</th>
                   <th>Type</th>
                   <th>Created</th>
-                  <th>History</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -303,7 +379,7 @@ function App() {
                     <td>{payment.id}</td>
                     <td>{payment.accountFrom}</td>
                     <td>{payment.accountTo}</td>
-                    <td>{payment.amount}</td>
+                    <td>{formatAmount(payment.amount)}</td>
                     <td>{payment.currency}</td>
                     <td>
                       <span className={`status-pill ${payment.status?.toLowerCase() || ''}`}>
@@ -312,14 +388,33 @@ function App() {
                     </td>
                     <td>{payment.type}</td>
                     <td>{formatDate(payment.createdAt)}</td>
-                    <td>
+                    <td className="actions-cell">
                       <button
                         type="button"
                         className="link-button"
                         onClick={() => openHistoryForPayment(payment.id)}
                       >
-                        View
+                        History
                       </button>
+                      {payment.status === 'CREATED' && (
+                        <button
+                          type="button"
+                          className="link-button validate-btn"
+                          onClick={() => handleValidateClick(payment.id)}
+                          disabled={validatingId === payment.id}
+                        >
+                          {validatingId === payment.id ? 'Validating...' : 'Validate'}
+                        </button>
+                      )}
+                      {payment.status === 'VALIDATED' && (
+                        <button
+                          type="button"
+                          className="link-button process-btn"
+                          onClick={() => handleSendOtpClick(payment.id)}
+                        >
+                          Send OTP
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -354,6 +449,27 @@ function App() {
 
           {historyError && <p className="error-msg">{historyError}</p>}
 
+          {latestHistoryEntry && (
+            <div className="history-summary">
+              <article className="metric-card">
+                <p>Latest Status</p>
+                <h3>
+                  <span className={`status-pill ${latestHistoryEntry.newStatus?.toLowerCase() || ''}`}>
+                    {latestHistoryEntry.newStatus}
+                  </span>
+                </h3>
+              </article>
+              <article className="metric-card">
+                <p>Latest Update</p>
+                <h3>{formatDate(latestHistoryEntry.changedAt)}</h3>
+              </article>
+              <article className="metric-card">
+                <p>Payment Method</p>
+                <h3>{latestHistoryEntry.type || '-'}</h3>
+              </article>
+            </div>
+          )}
+
           <div className="table-wrap">
             <table>
               <thead>
@@ -362,13 +478,15 @@ function App() {
                   <th>Payment ID</th>
                   <th>Old Status</th>
                   <th>New Status</th>
+                  <th>Type</th>
+                  <th>Remarks</th>
                   <th>Changed At</th>
                 </tr>
               </thead>
               <tbody>
                 {historyItems.length === 0 && !historyLoading && (
                   <tr>
-                    <td colSpan="5" className="empty-cell">
+                    <td colSpan="7" className="empty-cell">
                       No history records to display.
                     </td>
                   </tr>
@@ -377,8 +495,20 @@ function App() {
                   <tr key={entry.id}>
                     <td>{entry.id}</td>
                     <td>{entry.paymentId}</td>
-                    <td>{entry.oldStatus || '-'}</td>
-                    <td>{entry.newStatus}</td>
+                    <td>
+                      {entry.oldStatus ? (
+                        <span className={`status-pill ${entry.oldStatus.toLowerCase()}`}>{entry.oldStatus}</span>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td>
+                      <span className={`status-pill ${entry.newStatus?.toLowerCase() || ''}`}>
+                        {entry.newStatus || '-'}
+                      </span>
+                    </td>
+                    <td>{entry.type || '-'}</td>
+                    <td className="history-remarks">{entry.remarks || '-'}</td>
                     <td>{formatDate(entry.changedAt)}</td>
                   </tr>
                 ))}
@@ -390,6 +520,17 @@ function App() {
 
       {activeTab === 'dashboard' && (
         <AccountDashboard formatDate={formatDate} />
+      )}
+
+      {otpModal.paymentId !== null && (
+        <OtpModal
+          paymentId={otpModal.paymentId}
+          sending={otpModal.sending}
+          submitting={otpModal.submitting}
+          error={otpModal.error}
+          onSubmit={handleOtpSubmit}
+          onCancel={handleOtpCancel}
+        />
       )}
     </div>
   )

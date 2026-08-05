@@ -48,4 +48,19 @@ export function getPaymentHistory(paymentId) {
   return request(`/api/payments/${paymentId}/history`)
 }
 
+export function validatePayment(paymentId) {
+  return request(`/api/payments/${paymentId}/validate`, { method: 'POST' })
+}
+
+export function sendOtp(paymentId) {
+  return request(`/api/payments/${paymentId}/send-otp`, { method: 'POST' })
+}
+
+export function processPayment(paymentId, otpCode) {
+  return request(`/api/payments/${paymentId}/process`, {
+    method: 'POST',
+    body: JSON.stringify({ otpCode }),
+  })
+}
+
 export { PAYMENT_STATUSES }
