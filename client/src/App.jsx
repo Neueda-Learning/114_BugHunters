@@ -2,30 +2,38 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   PAYMENT_STATUSES,
   createPayment,
+  getPaymentById,
   getPaymentHistory,
   getPayments,
   processPayment,
   sendOtp,
   validatePayment,
 } from './api/payments'
+import { getAccounts } from './api/accounts'
 import AccountDashboard from './features/payments/components/AccountDashboard'
 import OtpModal from './features/payments/components/OtpModal'
 import './App.css'
 
+const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'INR']
+const PAYMENT_TYPE_OPTIONS = ['TRANSFER', 'UPI', 'DEBIT_CARD', 'CREDIT_CARD']
+
 function App() {
-  const [activeTab, setActiveTab] = useState('create')
+  const [activeTab, setActiveTab] = useState('dashboard')
   const [payments, setPayments] = useState([])
+  const [accounts, setAccounts] = useState([])
+  const [accountsLoading, setAccountsLoading] = useState(false)
+  const [accountsError, setAccountsError] = useState('')
   const [listStatusFilter, setListStatusFilter] = useState('ALL')
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState('')
 
   const [historyItems, setHistoryItems] = useState([])
   const [historyPaymentId, setHistoryPaymentId] = useState('')
+  const [historyPaymentDetails, setHistoryPaymentDetails] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState('')
 
   const [otpModal, setOtpModal] = useState({ paymentId: null, sending: false, submitting: false, error: '' })
-  const [validatingId, setValidatingId] = useState(null)
 
   const [submitLoading, setSubmitLoading] = useState(false)
   const [formError, setFormError] = useState('')
@@ -40,7 +48,35 @@ function App() {
 
   useEffect(() => {
     void loadPayments('ALL')
+    void loadAccounts()
   }, [])
+
+  async function loadAccounts() {
+    setAccountsLoading(true)
+    setAccountsError('')
+    try {
+      const data = await getAccounts()
+      setAccounts(data)
+      setFormData((current) => {
+        if (data.length === 0) {
+          return current
+        }
+
+        const defaultSource = current.accountFrom || data[0].accountNumber
+        const fallbackDestination = data.find((account) => account.accountNumber !== defaultSource)?.accountNumber || ''
+        return {
+          ...current,
+          accountFrom: defaultSource,
+          accountTo: current.accountTo || fallbackDestination,
+        }
+      })
+    } catch (error) {
+      setAccounts([])
+      setAccountsError(error.message || 'Unable to load accounts')
+    } finally {
+      setAccountsLoading(false)
+    }
+  }
 
   async function loadPayments(status) {
     setListLoading(true)
@@ -58,13 +94,17 @@ function App() {
   async function loadHistory(paymentId) {
     if (!paymentId) {
       setHistoryError('Please provide a payment ID.')
+      setHistoryPaymentDetails(null)
       return
     }
 
     setHistoryLoading(true)
     setHistoryError('')
     try {
-      const data = await getPaymentHistory(paymentId)
+      const [data, paymentDetails] = await Promise.all([
+        getPaymentHistory(paymentId),
+        getPaymentById(paymentId),
+      ])
       const sortedHistory = [...data].sort((a, b) => {
         const dateA = new Date(a.changedAt).getTime()
         const dateB = new Date(b.changedAt).getTime()
@@ -76,8 +116,10 @@ function App() {
         return (b.id ?? 0) - (a.id ?? 0)
       })
       setHistoryItems(sortedHistory)
+      setHistoryPaymentDetails(paymentDetails)
     } catch (error) {
       setHistoryItems([])
+      setHistoryPaymentDetails(null)
       setHistoryError(error.message || 'Unable to load payment history')
     } finally {
       setHistoryLoading(false)
@@ -119,7 +161,10 @@ function App() {
       }
 
       const created = await createPayment(payload)
-      setFormSuccess(`Payment #${created.id} created successfully.`)
+      await validatePayment(created.id)
+      await sendOtp(created.id)
+
+      setFormSuccess(`Payment #${created.id} created, validated, and OTP sent successfully.`)
       setFormData({
         currency: formData.currency,
         amount: '',
@@ -127,6 +172,9 @@ function App() {
         accountTo: '',
         type: formData.type,
       })
+
+      setOtpModal({ paymentId: created.id, sending: false, submitting: false, error: '' })
+      setActiveTab('list')
       await loadPayments(listStatusFilter)
     } catch (error) {
       setFormError(error.message || 'Unable to create payment')
@@ -139,30 +187,6 @@ function App() {
     setActiveTab('history')
     setHistoryPaymentId(String(paymentId))
     void loadHistory(paymentId)
-  }
-
-  async function handleValidateClick(paymentId) {
-    setListError('')
-    setValidatingId(paymentId)
-    try {
-      await validatePayment(paymentId)
-      await loadPayments(listStatusFilter)
-    } catch (error) {
-      setListError(error.message || 'Payment validation failed')
-      await loadPayments(listStatusFilter)
-    } finally {
-      setValidatingId(null)
-    }
-  }
-
-  async function handleSendOtpClick(paymentId) {
-    setOtpModal({ paymentId, sending: true, submitting: false, error: '' })
-    try {
-      await sendOtp(paymentId)
-      setOtpModal((prev) => ({ ...prev, sending: false }))
-    } catch (error) {
-      setOtpModal((prev) => ({ ...prev, sending: false, error: error.message || 'Failed to send OTP' }))
-    }
   }
 
   async function handleOtpSubmit(otpCode) {
@@ -212,6 +236,11 @@ function App() {
     return historyItems[0]
   }, [historyItems])
 
+  const selectedSourceAccount = useMemo(
+    () => accounts.find((account) => account.accountNumber === formData.accountFrom) || null,
+    [accounts, formData.accountFrom],
+  )
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -223,6 +252,13 @@ function App() {
       </header>
 
       <nav className="tabbar" aria-label="Payment pages">
+        <button
+          type="button"
+          className={activeTab === 'dashboard' ? 'tab active' : 'tab'}
+          onClick={() => setActiveTab('dashboard')}
+        >
+          Home
+        </button>
         <button
           type="button"
           className={activeTab === 'create' ? 'tab active' : 'tab'}
@@ -244,13 +280,6 @@ function App() {
         >
           Payment History
         </button>
-        <button
-          type="button"
-          className={activeTab === 'dashboard' ? 'tab active' : 'tab'}
-          onClick={() => setActiveTab('dashboard')}
-        >
-          Account Dashboard
-        </button>
       </nav>
 
       {activeTab === 'create' && (
@@ -259,14 +288,18 @@ function App() {
           <form className="grid-form" onSubmit={handleCreatePayment}>
             <label>
               Currency
-              <input
+              <select
                 name="currency"
                 value={formData.currency}
                 onChange={handleInputChange}
-                placeholder="USD"
-                maxLength={3}
                 required
-              />
+              >
+                {CURRENCY_OPTIONS.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Amount
@@ -281,38 +314,63 @@ function App() {
             </label>
             <label>
               Account From
-              <input
+              <select
                 name="accountFrom"
                 value={formData.accountFrom}
                 onChange={handleInputChange}
-                placeholder="ACC-1001"
+                disabled={accountsLoading || accounts.length === 0}
                 required
-              />
+              >
+                {accounts.length === 0 && <option value="">No accounts available</option>}
+                {accounts.map((account) => (
+                  <option key={account.accountNumber} value={account.accountNumber}>
+                    {account.accountNumber}
+                  </option>
+                ))}
+              </select>
+              <p className="field-hint">
+                Available balance: {selectedSourceAccount ? formatAmount(selectedSourceAccount.balance) : '-'}
+              </p>
             </label>
             <label>
               Account To
-              <input
+              <select
                 name="accountTo"
                 value={formData.accountTo}
                 onChange={handleInputChange}
-                placeholder="ACC-2004"
+                disabled={accountsLoading || accounts.length === 0}
                 required
-              />
+              >
+                {accounts.length === 0 && <option value="">No accounts available</option>}
+                {accounts
+                  .filter((account) => account.accountNumber !== formData.accountFrom)
+                  .map((account) => (
+                    <option key={account.accountNumber} value={account.accountNumber}>
+                      {account.accountNumber}
+                    </option>
+                  ))}
+              </select>
             </label>
             <label>
               Type
-              <input
+              <select
                 name="type"
                 value={formData.type}
                 onChange={handleInputChange}
-                placeholder="TRANSFER"
                 required
-              />
+              >
+                {PAYMENT_TYPE_OPTIONS.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
             </label>
             <div className="form-actions span-2">
               <button type="submit" disabled={submitLoading}>
                 {submitLoading ? 'Creating...' : 'Create Payment'}
               </button>
+              {accountsError && <p className="error-msg">{accountsError}</p>}
               {formError && <p className="error-msg">{formError}</p>}
               {formSuccess && <p className="success-msg">{formSuccess}</p>}
             </div>
@@ -363,7 +421,7 @@ function App() {
                   <th>Status</th>
                   <th>Type</th>
                   <th>Created</th>
-                  <th>Actions</th>
+                  <th>History</th>
                 </tr>
               </thead>
               <tbody>
@@ -388,7 +446,7 @@ function App() {
                     </td>
                     <td>{payment.type}</td>
                     <td>{formatDate(payment.createdAt)}</td>
-                    <td className="actions-cell">
+                    <td>
                       <button
                         type="button"
                         className="link-button"
@@ -396,25 +454,6 @@ function App() {
                       >
                         History
                       </button>
-                      {payment.status === 'CREATED' && (
-                        <button
-                          type="button"
-                          className="link-button validate-btn"
-                          onClick={() => handleValidateClick(payment.id)}
-                          disabled={validatingId === payment.id}
-                        >
-                          {validatingId === payment.id ? 'Validating...' : 'Validate'}
-                        </button>
-                      )}
-                      {payment.status === 'VALIDATED' && (
-                        <button
-                          type="button"
-                          className="link-button process-btn"
-                          onClick={() => handleSendOtpClick(payment.id)}
-                        >
-                          Send OTP
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -474,8 +513,9 @@ function App() {
             <table>
               <thead>
                 <tr>
-                  <th>History ID</th>
-                  <th>Payment ID</th>
+                  <th>Source Account</th>
+                  <th>Destination Account</th>
+                  <th>Amount Sent</th>
                   <th>Old Status</th>
                   <th>New Status</th>
                   <th>Type</th>
@@ -486,15 +526,16 @@ function App() {
               <tbody>
                 {historyItems.length === 0 && !historyLoading && (
                   <tr>
-                    <td colSpan="7" className="empty-cell">
+                    <td colSpan="8" className="empty-cell">
                       No history records to display.
                     </td>
                   </tr>
                 )}
                 {historyItems.map((entry) => (
                   <tr key={entry.id}>
-                    <td>{entry.id}</td>
-                    <td>{entry.paymentId}</td>
+                    <td>{historyPaymentDetails?.accountFrom || '-'}</td>
+                    <td>{historyPaymentDetails?.accountTo || '-'}</td>
+                    <td>{historyPaymentDetails ? formatAmount(historyPaymentDetails.amount) : '-'}</td>
                     <td>
                       {entry.oldStatus ? (
                         <span className={`status-pill ${entry.oldStatus.toLowerCase()}`}>{entry.oldStatus}</span>
@@ -532,6 +573,13 @@ function App() {
           onCancel={handleOtpCancel}
         />
       )}
+
+      <footer className="app-footer">
+        <p className="app-footer-brand">Payment Processing Platform</p>
+        <p className="app-footer-meta">
+          © {new Date().getFullYear()} Team Bug Hunters. Secure transaction orchestration and monitoring.
+        </p>
+      </footer>
     </div>
   )
 }

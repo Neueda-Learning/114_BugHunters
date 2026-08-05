@@ -29,7 +29,16 @@ export async function request(path, options = {}) {
     return null
   }
 
-  return response.json()
+  const responseText = await response.text()
+  if (!responseText) {
+    return null
+  }
+
+  try {
+    return JSON.parse(responseText)
+  } catch {
+    return responseText
+  }
 }
 
 export function getPayments(status = 'ALL') {
@@ -46,6 +55,10 @@ export function createPayment(payload) {
 
 export function getPaymentHistory(paymentId) {
   return request(`/api/payments/${paymentId}/history`)
+}
+
+export function getPaymentById(paymentId) {
+  return request(`/api/payments/${paymentId}`)
 }
 
 export function validatePayment(paymentId) {
