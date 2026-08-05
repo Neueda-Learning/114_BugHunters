@@ -266,11 +266,14 @@ class PaymentServiceTest {
                 .isInstanceOf(PaymentProcessingException.class);
 
         ArgumentCaptor<PaymentHistory> historyCaptor = ArgumentCaptor.forClass(PaymentHistory.class);
-        verify(paymentHistoryRepository, times(2)).save(historyCaptor.capture());
+        verify(paymentHistoryRepository, times(3)).save(historyCaptor.capture());
         List<PaymentHistory> history = historyCaptor.getAllValues();
-        PaymentHistory last = history.get(history.size() - 1);
-        assertThat(last.getOldStatus()).isEqualTo(PaymentStatus.SENT);
-        assertThat(last.getNewStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(history.get(0).getOldStatus()).isEqualTo(PaymentStatus.VALIDATED);
+        assertThat(history.get(0).getNewStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(1).getOldStatus()).isEqualTo(PaymentStatus.SENT);
+        assertThat(history.get(1).getNewStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(history.get(2).getOldStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(history.get(2).getNewStatus()).isEqualTo(PaymentStatus.FAILED);
     }
 
     @Test
