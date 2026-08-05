@@ -25,11 +25,11 @@ pipeline {
                 ]) {
                     script {
                         if (isUnix()) {
-                            sh 'docker compose pull'
-                            sh 'docker compose up -d --remove-orphans'
+                            sh 'docker-compose pull'
+                            sh 'docker-compose up -d --remove-orphans'
                         } else {
-                            bat 'docker compose pull'
-                            bat 'docker compose up -d --remove-orphans'
+                            bat 'docker-compose pull'
+                            bat 'docker-compose up -d --remove-orphans'
                         }
                     }
                 }
