@@ -129,6 +129,15 @@ function AccountDashboard({ formatDate }) {
     }
   }, [])
 
+  // Auto-refresh dashboard data for the selected account every 10 seconds
+  useEffect(() => {
+    if (!selectedAccountId) return
+    const id = setInterval(() => {
+      void loadAccountDashboard(selectedAccountId)
+    }, 10000)
+    return () => clearInterval(id)
+  }, [selectedAccountId])
+
   const outgoingTransactions = useMemo(
     () =>
       dashboardTransactions.filter(
