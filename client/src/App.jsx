@@ -577,7 +577,7 @@ function App() {
       <footer className="app-footer">
         <p className="app-footer-brand">Payment Processing Platform</p>
         <p className="app-footer-meta">
-          © {new Date().getFullYear()} Team Bug Hunters. Secure transaction orchestration and monitoring.
+          © {new Date().getFullYear()} Team Bug Hunters.
         </p>
       </footer>
     </div>
