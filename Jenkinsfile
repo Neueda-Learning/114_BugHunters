@@ -19,7 +19,10 @@ pipeline {
         stage('Deploy with Docker Compose') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'mysql-root-password', variable: 'MYSQL_ROOT_PASSWORD')
+                    string(credentialsId: 'mysql-root-password', variable: 'MYSQL_ROOT_PASSWORD'),
+                    string(credentialsId: 'spring-mail-username', variable: 'SPRING_MAIL_USERNAME'),
+                    string(credentialsId: 'spring-mail-password', variable: 'SPRING_MAIL_PASSWORD'),
+                    string(credentialsId: 'otp-recipient-email', variable: 'APP_OTP_RECIPIENT_EMAIL')
                 ]) {
                     script {
                         if (isUnix()) {
