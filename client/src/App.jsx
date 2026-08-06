@@ -228,6 +228,19 @@ function App() {
     }
   }
 
+  async function handleProcessValidatedPayment(paymentId) {
+    setListError('')
+    setOtpModal({ paymentId, sending: true, submitting: false, error: '' })
+
+    try {
+      await sendOtp(paymentId)
+      setOtpModal((prev) => ({ ...prev, sending: false }))
+    } catch (error) {
+      setOtpModal({ paymentId: null, sending: false, submitting: false, error: '' })
+      setListError(error.message || 'Unable to send OTP for this payment')
+    }
+  }
+
   function handleOtpCancel() {
     setOtpModal({ paymentId: null, sending: false, submitting: false, error: '' })
   }
@@ -417,7 +430,7 @@ function App() {
                 aria-label="Filter by status"
               >
                 <option value="ALL">All Statuses</option>
-                {PAYMENT_STATUSES.map((status) => (
+                {PAYMENT_STATUSES.filter((status) => status !== 'SENT').map((status) => (
                   <option key={status} value={status}>
                     {status}
                   </option>
@@ -449,13 +462,14 @@ function App() {
                   <th>Status</th>
                   <th>Type</th>
                   <th>Created</th>
+                  <th>Action</th>
                   <th>History</th>
                 </tr>
               </thead>
               <tbody>
                 {payments.length === 0 && !listLoading && (
                   <tr>
-                    <td colSpan="9" className="empty-cell">
+                    <td colSpan="10" className="empty-cell">
                       No payments found for this filter.
                     </td>
                   </tr>
@@ -474,6 +488,20 @@ function App() {
                     </td>
                     <td>{payment.type}</td>
                     <td>{formatDate(payment.createdAt)}</td>
+                    <td>
+                      {payment.status === 'VALIDATED' ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleProcessValidatedPayment(payment.id)
+                          }}
+                        >
+                          Process Payment
+                        </button>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                     <td>
                       <button
                         type="button"
