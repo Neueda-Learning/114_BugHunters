@@ -77,3 +77,4 @@ docker ps
 - Do not hardcode passwords in `docker-compose.yml`.
 - Use GitHub Secrets for CI/CD credentials.
 - Prefer Docker Hub access tokens over account password.
+- Updated deployment verification steps.
