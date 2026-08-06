@@ -78,3 +78,42 @@ docker ps
 - Use GitHub Secrets for CI/CD credentials.
 - Prefer Docker Hub access tokens over account password.
 - Updated deployment verification steps.
+
+## roubleshooting
+- CD workflow fails at Docker Hub login
+- If the Login to Docker Hub step fails in GitHub Actions:
+
+- verify DOCKER_USERNAME is your exact Docker Hub username
+- verify DOCKER_PASSWORD is a valid Docker Hub access token
+- do not use GitHub personal access token
+- do not use Docker account email in place of username
+- if a token was deleted, create a new one and update the repository secret
+- Local Docker does not work in Windows VM
+- If Docker reports that virtualization is not detected in a Windows VM:
+
+- use the provided Linux VM instead
+- check Docker availability with docker --version
+- verify daemon access with docker info
+
+# Running in the Linux VM
+
+If Docker Desktop does not work in a nested Windows virtual machine, use the provided Linux VM for build and deployment tasks.
+Recommended checks in the Linux VM:
+
+```bash
+git --version
+docker --version
+docker info
+```
+
+If `docker info` reports a permission issue, try:
+
+```bash
+sudo docker info
+```
+
+Use the Linux VM to:
+- clone the repository
+- build Docker images locally
+- test `docker compose` commands
+- push changes to GitHub

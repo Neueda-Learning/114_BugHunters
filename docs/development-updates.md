@@ -43,3 +43,31 @@
 - Email-OTP Setup for verification and authentication.
 - Controllers to update balance and change status of the user.
 - Documentation of the project.
+
+### Completed
+- CI is done.
+- Email-OTP Setup is done.
+- Controllers are working fine.
+
+---
+
+## 05-08-2026
+
+### In Progress
+- CD and jenkins for the Project.
+- Dashboard development.
+- Documentation.
+
+### Completed
+- Dashboard development and Enhancements.
+- CD part is done.
+
+---
+
+## 06-08-2026
+
+### In Progress
+- PPT for the project.
+
+### Completed
+- Documentation.
