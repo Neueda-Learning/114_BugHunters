@@ -94,3 +94,26 @@ docker ps
 - use the provided Linux VM instead
 - check Docker availability with docker --version
 - verify daemon access with docker info
+
+# Running in the Linux VM
+
+If Docker Desktop does not work in a nested Windows virtual machine, use the provided Linux VM for build and deployment tasks.
+Recommended checks in the Linux VM:
+
+```bash
+git --version
+docker --version
+docker info
+```
+
+If `docker info` reports a permission issue, try:
+
+```bash
+sudo docker info
+```
+
+Use the Linux VM to:
+- clone the repository
+- build Docker images locally
+- test `docker compose` commands
+- push changes to GitHub
