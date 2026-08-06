@@ -104,6 +104,14 @@ docker compose up --build
 This starts MySQL, the backend (`http://localhost:8081`), and the frontend
 (`http://localhost:8082`). See [docs/cd-deployment.md](docs/cd-deployment.md) for CI/CD details.
 
+### Jenkins Deployment
+
+- Jenkins is used as the deployment runner for this project.
+- On each deployment run, Jenkins checks out the latest commit from `main` and executes
+   `docker-compose up -d --build --remove-orphans` using the repository `Jenkinsfile`.
+- Runtime secrets (for example MySQL and SMTP credentials) are injected from Jenkins
+   Credentials and passed to Docker Compose as environment variables.
+
 ## Configuration
 
 Key settings in `src/main/resources/application.properties`:
@@ -181,3 +189,20 @@ filtered by `status`), fetch a single payment, view its full status-change histo
 Unit/integration tests live under `src/test/java/.../controller` and `.../service`.
 Note: `PaymentprocessingApplicationTests.contextLoads` requires a live local MySQL
 `paymentdb` instance to pass.
+
+## Compliance Future Scope
+
+This project is currently designed for local development and demonstration use only.
+It is not intended for public production traffic at this stage.
+
+Because of that, full regulatory and enterprise-grade security controls are not yet
+implemented. These are planned as future scope items, including:
+
+- Regulatory alignment (for example PCI-DSS/GDPR-style controls based on deployment region).
+- Stronger authentication/authorization and role-based access controls.
+- Secret management through a managed vault instead of local/runtime environment variables.
+- Audit logging hardening, retention policy, and tamper-evidence controls.
+- Security testing and hardening (SAST/DAST, dependency scanning, and threat modeling).
+
+These controls can be added in later phases when the project moves from local use to
+shared or production deployment.

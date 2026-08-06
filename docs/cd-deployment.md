@@ -1,119 +1,72 @@
 # CD Deployment Guide
 
-## Required GitHub Secrets
+This document describes how continuous deployment is handled for this project.
 
-Add these repository secrets in GitHub:
+## Pipeline Responsibility
 
-- `DOCKER_USERNAME`: Docker Hub username.
-- `DOCKER_PASSWORD`: Docker Hub password or access token.
+- Build/test and image publishing can be handled by CI workflows.
+- Deployment is executed by Jenkins using [../Jenkinsfile](../Jenkinsfile).
+- Jenkins deploys the latest commit from main.
 
-The workflow in `.github/workflows/cd.yml` uses these to authenticate and push Docker images.
+## Jenkins Credentials Required
 
-## Required Runtime Environment Variables
+Create these Jenkins Secret text credentials:
 
-When running `docker compose`, provide these variables:
+- mysql-root-password
+- spring-mail-username
+- spring-mail-password
+- otp-recipient-email
 
-- `DOCKER_USERNAME`: Docker Hub username that owns the images.
-- `MYSQL_ROOT_PASSWORD`: MySQL root password for the database container and backend datasource.
-- `MYSQL_DATABASE` (optional): defaults to `paymentdb`.
-- `IMAGE_TAG` (optional): defaults to `latest`.
+## Runtime Variables Used by Docker Compose
 
-Example PowerShell session:
+The deployment stack in [../docker-compose.yml](../docker-compose.yml) expects:
 
-```powershell
-$env:DOCKER_USERNAME = "your-dockerhub-username"
-$env:MYSQL_ROOT_PASSWORD = "your-strong-password"
-$env:MYSQL_DATABASE = "paymentdb"
-$env:IMAGE_TAG = "latest"
-```
+- MYSQL_ROOT_PASSWORD
+- MYSQL_DATABASE (defaults to paymentdb)
+- SPRING_MAIL_USERNAME
+- SPRING_MAIL_PASSWORD
+- APP_OTP_RECIPIENT_EMAIL
+- Optional: APP_OTP_EXPIRY_MINUTES, SPRING_MAIL_HOST, SPRING_MAIL_PORT
 
-## How Deployment Works with Docker Compose
+Jenkins provides these values via credential binding and environment variables.
 
-1. `docker compose pull` pulls prebuilt backend and frontend images from Docker Hub.
-2. `docker compose up -d` starts:
-   - `mysql` with persistent volume `mysql_data`
-   - `backend` (depends on healthy MySQL)
-   - `frontend` served by Nginx
-3. Frontend API calls to `/api/*` are reverse-proxied by Nginx to `backend:8080`.
+## Deployment Sequence
 
-## Complete CI/CD Flow
+1. Jenkins checks out source.
+2. Jenkins binds credential values.
+3. Jenkins runs docker-compose down (best effort) and removes old app containers.
+4. Jenkins runs docker-compose up -d --build --remove-orphans.
+5. Jenkins prunes dangling images after success.
 
-1. Developers push code to `main`.
-2. Existing CI workflow (`.github/workflows/ci.yml`) runs backend tests and frontend build.
-3. On CI success, CD workflow (`.github/workflows/cd.yml`) is triggered.
-4. CD logs in to Docker Hub.
-5. CD builds and pushes:
-   - `DOCKER_USERNAME/payment-backend:latest` and sha tag
-   - `DOCKER_USERNAME/payment-frontend:latest` and sha tag
-6. Jenkins (or any deployment host) runs `docker compose pull` and `docker compose up -d` to deploy latest images.
+## Verification
 
-## Local Deployment Commands
+After deployment:
 
-Build images manually:
+- Frontend is reachable on host port 8082.
+- Backend is reachable on host port 8081.
+- MySQL container is healthy.
+- Payment creation, validation, send-otp, and process endpoints work.
 
-```powershell
-docker build -t your-dockerhub-username/payment-backend:latest .
-docker build -t your-dockerhub-username/payment-frontend:latest ./client
-```
+## Troubleshooting
 
-Run full stack with compose:
+### Docker Hub or image pull issues
 
-```powershell
-$env:DOCKER_USERNAME = "your-dockerhub-username"
-$env:MYSQL_ROOT_PASSWORD = "your-strong-password"
-docker compose pull
-docker compose up -d
-```
+- Check Docker login configuration where CI builds/pushes images.
+- Verify image tags and repository visibility.
 
-Inspect running environment:
+### SMTP or OTP failures
 
-```powershell
-docker images
-docker ps
-```
+- Verify spring-mail-username and spring-mail-password credential values.
+- Verify otp-recipient-email credential value.
+- Check backend logs for authentication or TLS errors.
 
-## Security Notes
+### Database startup/authentication issues
 
-- Do not hardcode passwords in `docker-compose.yml`.
-- Use GitHub Secrets for CI/CD credentials.
-- Prefer Docker Hub access tokens over account password.
-- Updated deployment verification steps.
+- Verify mysql-root-password credential value.
+- Confirm backend uses the same password at runtime.
 
-## roubleshooting
-- CD workflow fails at Docker Hub login
-- If the Login to Docker Hub step fails in GitHub Actions:
+## Related Docs
 
-- verify DOCKER_USERNAME is your exact Docker Hub username
-- verify DOCKER_PASSWORD is a valid Docker Hub access token
-- do not use GitHub personal access token
-- do not use Docker account email in place of username
-- if a token was deleted, create a new one and update the repository secret
-- Local Docker does not work in Windows VM
-- If Docker reports that virtualization is not detected in a Windows VM:
-
-- use the provided Linux VM instead
-- check Docker availability with docker --version
-- verify daemon access with docker info
-
-# Running in the Linux VM
-
-If Docker Desktop does not work in a nested Windows virtual machine, use the provided Linux VM for build and deployment tasks.
-Recommended checks in the Linux VM:
-
-```bash
-git --version
-docker --version
-docker info
-```
-
-If `docker info` reports a permission issue, try:
-
-```bash
-sudo docker info
-```
-
-Use the Linux VM to:
-- clone the repository
-- build Docker images locally
-- test `docker compose` commands
-- push changes to GitHub
+- [README.md](README.md)
+- [operations-runbook.md](operations-runbook.md)
+- [../README.md](../README.md)
