@@ -23,8 +23,10 @@ pipeline {
                 ]) {
                     script {
                         if (isUnix()) {
+                            sh 'docker-compose down'
                             sh 'docker-compose up -d --build --remove-orphans'
                         } else {
+                            bat 'docker-compose down'
                             bat 'docker-compose up -d --build --remove-orphans'
                         }
                     }
