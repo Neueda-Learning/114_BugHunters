@@ -51,6 +51,34 @@ function App() {
     void loadAccounts()
   }, [])
 
+  useEffect(() => {
+    if (activeTab !== 'create') {
+      setFormSuccess('')
+      setFormError('')
+    }
+  }, [activeTab])
+
+  useEffect(() => {
+    if (!formSuccess) return
+    const id = setTimeout(() => setFormSuccess(''), 5000)
+    return () => clearTimeout(id)
+  }, [formSuccess])
+
+  useEffect(() => {
+    if (activeTab !== 'list') return
+    const id = setInterval(() => {
+      void loadPayments(listStatusFilter)
+    }, 10000)
+    return () => clearInterval(id)
+  }, [activeTab, listStatusFilter])
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      void loadAccounts()
+    }, 30000)
+    return () => clearInterval(id)
+  }, [])
+
   async function loadAccounts() {
     setAccountsLoading(true)
     setAccountsError('')

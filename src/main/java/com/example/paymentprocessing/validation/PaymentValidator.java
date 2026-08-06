@@ -32,7 +32,7 @@ public class PaymentValidator {
     private static final int MAX_DECIMAL_PLACES = 2;
 
     // Example set of currencies supported by the system (ISO 4217 codes).
-    private static final Set<String> SUPPORTED_CURRENCIES = Set.of("USD", "EUR", "GBP");
+    private static final Set<String> SUPPORTED_CURRENCIES = Set.of("USD", "EUR", "GBP", "INR");
 
     // Simple alphanumeric account number format, 6-20 characters.
     private static final Pattern ACCOUNT_NUMBER_PATTERN = Pattern.compile("^[A-Za-z0-9]{6,20}$");
