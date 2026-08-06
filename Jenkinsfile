@@ -23,11 +23,11 @@ pipeline {
                 ]) {
                     script {
                         if (isUnix()) {
-                            sh 'docker-compose down -v 2>/dev/null || true'
+                            sh 'docker-compose down 2>/dev/null || true'
                             sh 'docker rm -f payment-backend payment-frontend 2>/dev/null || true'
                             sh 'docker-compose up -d --build --remove-orphans'
                         } else {
-                            bat 'docker-compose down -v 2>nul || exit /b 0'
+                            bat 'docker-compose down 2>nul || exit /b 0'
                             bat 'docker rm -f payment-backend payment-frontend 2>nul || exit /b 0'
                             bat 'docker-compose up -d --build --remove-orphans'
                         }

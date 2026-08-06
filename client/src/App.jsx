@@ -273,9 +273,9 @@ function App() {
     <div className="app-shell">
       <header className="app-header">
         <p className="eyebrow">Payment Processing Console</p>
-        <h1>Payments Frontend</h1>
+        <h1>Payment Console</h1>
         <p className="subtitle">
-          Create payments, list them with filters, and inspect payment history connected to your backend API.
+          Create payments, list them with filters, and inspect payment history.
         </p>
       </header>
 
